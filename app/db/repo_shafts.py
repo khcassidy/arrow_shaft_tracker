@@ -13,7 +13,7 @@ import sqlite3
 import statistics
 
 from core.derive import derive_spine
-from core.units import UnitError, parse_spine_lb, parse_weight
+from core.units import UnitError, parse_length_in, parse_spine_lb, parse_weight
 from core.validate import ValidationBlocked, check_batch_outlier, check_spine_reading, check_weight_reading
 
 _SORT_COLUMNS = {"seq": "seq", "weight": "weight_cg", "spine": "avg_spine_mlb"}
@@ -49,7 +49,7 @@ def list_partition_shafts(
     if available_only:
         where += (
             " AND consumed_set_id IS NULL"
-            " AND (straightness IS NULL OR straightness <> 'JUNK')"
+            " AND quality <> 'JUNK'"
             " AND avg_spine_mlb IS NOT NULL AND weight_cg IS NOT NULL"
         )
     return conn.execute(
@@ -219,11 +219,20 @@ def patch_shaft_entry(conn: sqlite3.Connection, batch_id: int, seq: int, fields:
                 )
             )
 
-    if "straightness" in fields:
+    if "length" in fields:
+        raw = fields["length"]
+        length_c_in = parse_length_in(raw) if raw is not None else None  # UnitError -> 422
         conn.execute(
-            "UPDATE shaft SET straightness = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+            "UPDATE shaft SET length_c_in = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
             "WHERE id = ?",
-            (fields["straightness"], shaft_id),
+            (length_c_in, shaft_id),
+        )
+
+    if "quality" in fields:
+        conn.execute(
+            "UPDATE shaft SET quality = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+            "WHERE id = ?",
+            (fields["quality"], shaft_id),
         )
 
     if "notes" in fields:
@@ -269,7 +278,7 @@ def entry_state(conn: sqlite3.Connection, batch_id: int) -> dict:
              SUM(CASE WHEN spine_count >= 1 THEN 1 ELSE 0 END) AS spine_a_done,
              SUM(CASE WHEN spine_count >= 2 THEN 1 ELSE 0 END) AS spine_b_done,
              SUM(CASE WHEN weight_cg IS NOT NULL THEN 1 ELSE 0 END) AS weight_done,
-             SUM(CASE WHEN straightness IS NOT NULL THEN 1 ELSE 0 END) AS straightness_done
+             SUM(CASE WHEN quality IS NOT NULL THEN 1 ELSE 0 END) AS quality_done
            FROM shaft WHERE batch_id = ?""",
         (batch_id,),
     ).fetchone()
@@ -309,14 +318,19 @@ def entry_state(conn: sqlite3.Connection, batch_id: int) -> dict:
                 pass_ = "weight"
                 next_focus = {"seq": weight_row["seq"], "field": "weightG"}
             else:
-                straight_row = conn.execute(
-                    "SELECT seq FROM shaft WHERE batch_id = ? AND straightness IS NULL "
+                # Always empty now that quality is NOT NULL DEFAULT 'USABLE':
+                # every shaft already has a rating from the moment it's
+                # created, so there is never a next one "needing" quality
+                # entry. The per-field "Quality" pass button still works as
+                # a manual destination -- auto-advance just never lands here.
+                quality_row = conn.execute(
+                    "SELECT seq FROM shaft WHERE batch_id = ? AND quality IS NULL "
                     "ORDER BY seq LIMIT 1",
                     (batch_id,),
                 ).fetchone()
-                if straight_row is not None:
-                    pass_ = "straightness"
-                    next_focus = {"seq": straight_row["seq"], "field": "straightness"}
+                if quality_row is not None:
+                    pass_ = "quality"
+                    next_focus = {"seq": quality_row["seq"], "field": "quality"}
                 else:
                     next_focus = None
         if pass_ != batch["entry_pass"]:
@@ -335,7 +349,7 @@ def entry_state(conn: sqlite3.Connection, batch_id: int) -> dict:
             "spineA": counts["spine_a_done"],
             "spineB": counts["spine_b_done"],
             "weight": counts["weight_done"],
-            "straightness": counts["straightness_done"],
+            "quality": counts["quality_done"],
         },
         "nextFocus": next_focus,
         "complete": next_focus is None,

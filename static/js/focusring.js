@@ -2,13 +2,18 @@
 // 2's second pass is literally a different ring over the same DOM -- no
 // re-render, no refetch, no data loss when the archer switches.
 
+// weightGr is deliberately not a ring stop: grams and grains are two
+// live-linked views onto one value (see entrygrid.js's buildWeightCells),
+// and an archer who always types grams never needs to tab through the
+// grains cell to get to the next row. The grains cell stays fully present
+// and editable by clicking into it directly -- it's just skipped by
+// Enter/Tab traversal, not removed.
 export function buildRing(rows, mode, pass) {
   if (mode === "per_shaft") {
     return rows.flatMap((r) => [
       { seq: r.seq, field: "spineA" },
       { seq: r.seq, field: "spineB" },
       { seq: r.seq, field: "weightG" },
-      { seq: r.seq, field: "weightGr" },
     ]);
   }
   if (pass === "spine") {
@@ -18,13 +23,10 @@ export function buildRing(rows, mode, pass) {
     ]);
   }
   if (pass === "weight") {
-    return rows.flatMap((r) => [
-      { seq: r.seq, field: "weightG" },
-      { seq: r.seq, field: "weightGr" },
-    ]);
+    return rows.map((r) => ({ seq: r.seq, field: "weightG" }));
   }
-  // straightness pass
-  return rows.map((r) => ({ seq: r.seq, field: "straightness" }));
+  // quality pass
+  return rows.map((r) => ({ seq: r.seq, field: "quality" }));
 }
 
 export class FocusRing {

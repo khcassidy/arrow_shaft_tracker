@@ -1,9 +1,16 @@
 """Builds export row dicts, joining shaft_entry_v with the lookup labels
-a human-readable file needs instead of raw ids."""
+a human-readable file needs instead of raw ids.
+
+length_text is the shaft's EFFECTIVE length (its own override, else the
+batch default), formatted back to inches. That is what the flat CSV wants
+on every row -- see app/io/csv_io.py for why the backup format does the
+opposite and keeps the override separate."""
 
 from __future__ import annotations
 
 import sqlite3
+
+from core.units import format_length_in
 
 
 def export_shaft_rows(conn: sqlite3.Connection, batch_id: int | None = None) -> list[dict]:
@@ -13,16 +20,25 @@ def export_shaft_rows(conn: sqlite3.Connection, batch_id: int | None = None) -> 
         f"""SELECT sev.batch_no, sev.seq, sev.label,
                    d.label AS diameter_label, w.label AS wood_label, sh.label AS shop_label,
                    b.purchase_date, b.nominal_spine_label,
+                   sb.label AS spine_band_label,
                    sev.spine_a_text, sev.spine_b_text,
                    sev.weight_text, sev.weight_unit,
-                   sev.straightness, sev.notes
+                   sev.effective_length_c_in,
+                   sev.quality, sev.notes
             FROM shaft_entry_v sev
             JOIN batch b ON b.id = sev.batch_id
             JOIN diameter_option d ON d.id = sev.diameter_id
             JOIN wood_option w ON w.id = sev.wood_id
             LEFT JOIN shop sh ON sh.id = b.shop_id
+            LEFT JOIN spine_band sb ON sb.id = b.spine_band_id
             {where}
             ORDER BY sev.batch_no, sev.seq""",
         params,
     ).fetchall()
-    return [dict(r) for r in rows]
+    out = []
+    for row in rows:
+        record = dict(row)
+        c_in = record.pop("effective_length_c_in")
+        record["length_text"] = format_length_in(c_in) if c_in is not None else None
+        out.append(record)
+    return out

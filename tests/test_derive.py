@@ -1,4 +1,4 @@
-from core.derive import ab_consistent, derive_spine, in_spec
+from core.derive import ab_consistent, derive_spine, in_spec, spine_band_status
 
 
 def test_derive_spine_two_readings_equals_sum_times_five():
@@ -68,3 +68,12 @@ def test_ab_consistent_matches_workbook_shaft_20_50():
     # Shaft 20-50 has an A/B spread of 2.0 lb against a 1.0 lb tolerance.
     assert ab_consistent(spine_spread_cp=200, ab_tol_cp=100) is False
     assert ab_consistent(spine_spread_cp=100, ab_tol_cp=100) is True
+
+
+def test_spine_band_status_boundaries():
+    band_min, band_max = 35000, 50000
+    assert spine_band_status(34999, band_min, band_max) == "BELOW"
+    assert spine_band_status(35000, band_min, band_max) == "IN"
+    assert spine_band_status(42500, band_min, band_max) == "IN"
+    assert spine_band_status(50000, band_min, band_max) == "IN"
+    assert spine_band_status(50001, band_min, band_max) == "ABOVE"

@@ -1,6 +1,15 @@
 """CSV import/export: the plain-text interchange format for everything or
 a single batch. Every value round-trips as text -- no cell is ever parsed
 through float() here; core.units does that, later, from the exact string.
+
+This is the flat, human-editable format, not the backup format -- JSON is
+that (see app/io/json_io.py). Two consequences are deliberate. Length
+exports as the shaft's EFFECTIVE length, so a spreadsheet shows a real
+number on every row rather than blanks on the shafts that inherit their
+batch default, and an import writes it back as that shaft's own length.
+SpineBand exports as a label only, so an import matches an existing band
+and never creates one -- a band needs a numeric (min, max) pair that a
+bare label cannot supply.
 """
 
 from __future__ import annotations
@@ -21,7 +30,9 @@ EXPORT_FIELDNAMES = [
     "SpineB",
     "WeightG",
     "WeightGr",
-    "Straightness",
+    "Length",
+    "SpineBand",
+    "Quality",
     "Notes",
 ]
 
@@ -49,7 +60,12 @@ _HEADER_ALIASES = {
     "weightgrams": "WeightG",
     "weightgr": "WeightGr",
     "weightgrains": "WeightGr",
-    "straightness": "Straightness",
+    "length": "Length",
+    "lengthin": "Length",
+    "lengthinches": "Length",
+    "spineband": "SpineBand",
+    "band": "SpineBand",
+    "quality": "Quality",
     "notes": "Notes",
     "comments": "Notes",
 }
@@ -106,7 +122,9 @@ def from_export_rows(db_rows: list[dict]) -> list[dict]:
                 "SpineB": r["spine_b_text"],
                 "WeightG": r["weight_text"] if r["weight_unit"] == "g" else None,
                 "WeightGr": r["weight_text"] if r["weight_unit"] == "gr" else None,
-                "Straightness": r["straightness"],
+                "Length": r["length_text"],
+                "SpineBand": r["spine_band_label"],
+                "Quality": r["quality"],
                 "Notes": r["notes"],
             }
         )
@@ -132,15 +150,18 @@ def to_staged_rows(rows: list[dict]) -> list[dict]:
                 "diameter": row.get("Diameter"),
                 "wood": row.get("Wood"),
                 "shop": row.get("Shop"),
+                "spineBand": row.get("SpineBand"),
                 "purchaseDate": row.get("PurchaseDate"),
                 "nominalSpineLabel": row.get("SpineRangeLabel"),
+                "batchLength": None,
                 "description": None,
                 "entryMode": None,
                 "spineA": row.get("SpineA"),
                 "spineB": row.get("SpineB"),
                 "weightText": weight_text,
                 "weightUnit": weight_unit,
-                "straightness": row.get("Straightness"),
+                "length": row.get("Length"),
+                "quality": row.get("Quality"),
                 "notes": row.get("Notes"),
             }
         )

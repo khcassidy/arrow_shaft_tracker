@@ -47,3 +47,14 @@ def in_spec(avg_spine_mlb: int, spec_min_mlb: int, spec_max_mlb: int) -> bool:
 
 def ab_consistent(spine_spread_cp: int, ab_tol_cp: int) -> bool:
     return spine_spread_cp <= ab_tol_cp
+
+
+def spine_band_status(avg_spine_mlb: int, band_min_mlb: int, band_max_mlb: int) -> str:
+    """'BELOW', 'IN', or 'ABOVE' against a batch's own assigned band --
+    the three-way analogue of in_spec()'s single yes/no, since a miss
+    needs to say which side it fell on."""
+    if avg_spine_mlb < band_min_mlb:
+        return "BELOW"
+    if avg_spine_mlb > band_max_mlb:
+        return "ABOVE"
+    return "IN"

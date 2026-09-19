@@ -5,6 +5,15 @@ def test_get_params_returns_workbook_defaults(client):
     assert default["weightTolCg"] == 50
     assert default["specMinMlb"] == 54000
     assert default["specMaxMlb"] == 60000
+    assert default["lengthTolCIn"] is None  # off until a param set sets it
+
+
+def test_patch_params_sets_and_clears_length_tolerance(client):
+    r = client.patch("/api/params/1", json={"lengthTolCIn": 100})
+    assert r.json()["lengthTolCIn"] == 100
+
+    r = client.patch("/api/params/1", json={"lengthTolCIn": None})
+    assert r.json()["lengthTolCIn"] is None
 
 
 def test_patch_params_updates_only_given_fields(client):

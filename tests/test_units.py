@@ -4,10 +4,12 @@ from core.units import (
     UnitError,
     format_avg_spine_mlb,
     format_grains,
+    format_length_in,
     format_spine_cp,
     format_weight_cg,
     grains_to_weight_cg,
     mean_minor,
+    parse_length_in,
     parse_spine_lb,
     parse_weight,
     parse_weight_g,
@@ -95,6 +97,31 @@ def test_format_weight_cg_round_trips_display():
 
 def test_format_avg_spine_mlb_shows_three_decimal_places():
     assert format_avg_spine_mlb(54375) == "54.375"
+
+
+def test_parse_length_in_whole_number():
+    assert parse_length_in("32") == 3200
+
+
+def test_parse_length_in_two_dp():
+    assert parse_length_in("32.25") == 3225
+
+
+def test_parse_length_in_rejects_more_than_two_decimal_places():
+    with pytest.raises(UnitError) as exc:
+        parse_length_in("32.255")
+    assert exc.value.code == "TOO_MANY_DP"
+
+
+@pytest.mark.parametrize("raw", ["0", "-5", "-0.01"])
+def test_parse_length_in_rejects_non_positive(raw):
+    with pytest.raises(UnitError) as exc:
+        parse_length_in(raw)
+    assert exc.value.code == "NOT_POSITIVE"
+
+
+def test_format_length_in_round_trips_display():
+    assert format_length_in(3225) == "32.25"
 
 
 def test_mean_minor_exact_division():

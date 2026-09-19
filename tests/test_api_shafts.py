@@ -27,6 +27,36 @@ def test_patch_explicit_null_clears_field_and_recomputes(client, batch):
     assert row["avgSpineMlb"] == 56000  # single reading: 56 lb exactly
 
 
+def test_shaft_length_inherits_batch_default_until_overridden(client, batch):
+    batch_id = batch["id"]
+    client.patch(f"/api/batches/{batch_id}", json={"length": "32.00"})
+
+    row = client.get(f"/api/batches/{batch_id}/shafts").json()[0]
+    assert row["lengthCIn"] is None
+    assert row["effectiveLengthCIn"] == 3200
+
+    r = client.patch(f"/api/batches/{batch_id}/shafts/1", json={"length": "31.50"})
+    row = r.json()
+    assert row["lengthCIn"] == 3150
+    assert row["effectiveLengthCIn"] == 3150
+
+    # Editing the batch default afterward must not touch the override.
+    client.patch(f"/api/batches/{batch_id}", json={"length": "33.00"})
+    row = client.get(f"/api/batches/{batch_id}/shafts").json()[0]
+    assert row["effectiveLengthCIn"] == 3150
+
+    # But it does move every still-inheriting sibling.
+    sibling = client.get(f"/api/batches/{batch_id}/shafts").json()[1]
+    assert sibling["lengthCIn"] is None
+    assert sibling["effectiveLengthCIn"] == 3300
+
+    # Clearing the override reverts to the (now-updated) batch default.
+    r = client.patch(f"/api/batches/{batch_id}/shafts/1", json={"length": None})
+    row = r.json()
+    assert row["lengthCIn"] is None
+    assert row["effectiveLengthCIn"] == 3300
+
+
 def test_patch_rejects_json_number_for_decimal_field(client, batch):
     batch_id = batch["id"]
     r = client.patch(f"/api/batches/{batch_id}/shafts/1", json={"weight": 23.23})
@@ -128,15 +158,20 @@ def test_entry_state_per_field_mode_walks_through_passes(client):
     client.patch(f"/api/batches/{batch_id}/shafts/1", json={"weight": "23.23"})
     client.patch(f"/api/batches/{batch_id}/shafts/2", json={"weight": "24.00"})
 
-    state = client.get(f"/api/batches/{batch_id}/entry-state").json()
-    assert state["pass"] == "straightness"
-
-    client.patch(f"/api/batches/{batch_id}/shafts/1", json={"straightness": "OK"})
-    client.patch(f"/api/batches/{batch_id}/shafts/2", json={"straightness": "OK"})
-
+    # No quality pass to walk through: quality is NOT NULL DEFAULT 'USABLE',
+    # so every shaft already has a rating from the moment it was created --
+    # spine + weight is the whole per-field journey now.
     state = client.get(f"/api/batches/{batch_id}/entry-state").json()
     assert state["complete"] is True
     assert state["nextFocus"] is None
+
+    # The Quality pass is still a manual destination even though
+    # auto-advance never lands there on its own.
+    client.patch(f"/api/batches/{batch_id}/shafts/1", json={"quality": "BAD"})
+    r = client.get(f"/api/batches/{batch_id}/shafts")
+    shafts = {s["seq"]: s for s in r.json()}
+    assert shafts[1]["quality"] == "BAD"
+    assert shafts[2]["quality"] == "USABLE"
 
 
 def test_list_shafts_sorts_by_weight(client, batch):

@@ -39,6 +39,12 @@ def _spread(candidates, ids, attr):
     return max(vals) - min(vals)
 
 
+def _length_candidates(*values):
+    """values: list of (avg_spine_mlb, weight_cg, length_c_in) triples ->
+    ShaftCandidates with synthetic ids 0..n-1."""
+    return [ShaftCandidate(i, spine, weight, length) for i, (spine, weight, length) in enumerate(values)]
+
+
 # ---- solve_max_set ----
 
 
@@ -143,6 +149,34 @@ def test_leftover_groups_extracts_more_than_one_disjoint_group():
 
 def test_leftover_groups_on_empty_input():
     assert solve_leftover_groups([], spine_tol_mlb=100, weight_tol_cg=100, min_group_size=3) == []
+
+
+# ---- length_tol_c_in: the optional third box-constraint dimension ----
+
+
+def test_max_set_length_tolerance_is_ignored_when_not_given():
+    # Wildly divergent lengths, but length_tol_c_in is omitted -- the two
+    # candidates that already share spine and weight must still group,
+    # exactly as if length didn't exist as a column at all.
+    candidates = _length_candidates((10, 100, 100), (11, 100, 9000))
+    result = solve_max_set(candidates, spine_tol_mlb=3, weight_tol_cg=5)
+    assert set(result.groups[0].shaft_ids) == {0, 1}
+
+
+def test_max_set_length_tolerance_excludes_a_spine_and_weight_match():
+    # All three candidates share spine and weight closely enough to group
+    # on those two axes alone; only 0 and 1 also share length. With a
+    # length tolerance active, all three dimensions must hold jointly, so
+    # 2 is excluded even though it would qualify without length in play.
+    candidates = _length_candidates((10, 100, 3200), (11, 100, 3210), (12, 100, 9000))
+    without_length = solve_max_set(candidates, spine_tol_mlb=3, weight_tol_cg=5)
+    assert set(without_length.groups[0].shaft_ids) == {0, 1, 2}
+
+    with_length = solve_max_set(
+        candidates, spine_tol_mlb=3, weight_tol_cg=5, length_tol_c_in=100
+    )
+    assert set(with_length.groups[0].shaft_ids) == {0, 1}
+    assert with_length.unused_shaft_ids == [2]
 
 
 # ---- golden regression against the real workbook ----

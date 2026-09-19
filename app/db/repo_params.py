@@ -16,6 +16,7 @@ _ALLOWED_PARAM_COLUMNS = {
     "ab_tol_cp",
     "min_group_size",
     "name",
+    "length_tol_c_in",
 }
 
 
@@ -39,6 +40,7 @@ def create_param_set(
     spec_max_mlb: int,
     ab_tol_cp: int,
     min_group_size: int,
+    length_tol_c_in: int | None = None,
 ) -> int:
     """New sets are never created as the default -- is_default has a
     partial UNIQUE index (at most one row), so becoming the default is
@@ -46,8 +48,8 @@ def create_param_set(
     cur = conn.execute(
         """INSERT INTO param_set
            (name, spine_tol_mlb, weight_tol_cg, objective, dozen_size,
-            spec_min_mlb, spec_max_mlb, ab_tol_cp, min_group_size)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            spec_min_mlb, spec_max_mlb, ab_tol_cp, min_group_size, length_tol_c_in)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             name,
             spine_tol_mlb,
@@ -58,6 +60,7 @@ def create_param_set(
             spec_max_mlb,
             ab_tol_cp,
             min_group_size,
+            length_tol_c_in,
         ),
     )
     conn.commit()

@@ -62,10 +62,18 @@ header.top-nav nav a.active {
   font-weight: bold;
 }
 
+/* Flush left, not centred: no auto margin, so all the slack falls on the
+   right. The tables inside are sized to their own content (see below), so
+   the page starts at the left edge and ends where the content ends. */
 main#app {
   padding: 1.5rem;
   max-width: 1600px;
-  margin: 0 auto;
+  margin: 0;
+  /* Holds the horizontal scroll for a table too wide for the screen --
+     the entry grid on a phone at the bench. It sits here rather than on
+     the table itself, which has to stay a real `display: table` box so
+     its header and body share one layout. */
+  overflow-x: auto;
 }
 
 h1 {
@@ -85,18 +93,20 @@ a.back-link {
   margin-bottom: 0.75rem;
 }
 
+/* One table layout, not two. This used to be `display: block` with
+   `overflow-x: auto` for horizontal scroll, which cost the element its
+   table semantics, so thead and tbody each had to be restored as their
+   own `display: table` box. That made them two INDEPENDENT layouts: each
+   sized itself to its own content, so a body cell wider than its stated
+   column width (a shaft label carrying a long set tag, say) grew the body
+   half only, and the headers slid out of line with the columns below.
+   A single table element cannot drift that way. The scroll a narrow
+   screen needs now lives on main#app instead. */
 table {
   border-collapse: collapse;
-  width: 100%;
-  overflow-x: auto;
-  display: block;
-}
-
-table thead,
-table tbody {
   display: table;
-  width: 100%;
   table-layout: fixed;
+  width: 100%;
 }
 
 th,
@@ -105,6 +115,76 @@ td {
   padding: 0.3rem 0.5rem;
   text-align: left;
 }
+
+/* ---- content-sized columns ----
+
+   table-layout: fixed with no column widths splits the table evenly
+   across its columns, so an 11-column table gave "yes" the same width as
+   "Dutch Bow Store". Every column of the tables below now states its own
+   width instead, and the table stops stretching to fill the page, so the
+   columns keep those widths rather than being padded back out.
+
+   The widths are in `ch`. The whole app is monospace (see `body`), so 1ch
+   is exactly one character and a column's width is readable as "how many
+   characters fit". Each one is the longer of (a) its widest actual value
+   and (b) its header plus the 1ch sort-arrow slot, then 1.2rem for the
+   cell's own padding and border. Every number here was measured against
+   real data, not estimated -- a column guessed two characters wide shows
+   up as dead space in every row of every table that has that column.
+
+   Stating a width for EVERY column, never just some, is what holds the
+   three shaft-info tables to identical widths. They are keyed by class,
+   never by position, because the candidate picker prepends a checkbox
+   column and the built-set member list appends a Remove one, so the same
+   column sits at a different index in each. See static/js/shaftinfo.js. */
+
+/* min-content, not max-content. Under `table-layout: fixed` a column's
+   stated width is the whole story and its content never votes, so
+   min-content here resolves to exactly the sum of the widths below --
+   which is the point. max-content let a column stretch to fit an
+   over-long value instead (a shaft label with a set tag appended), so the
+   same column came out one width on a batch that had sets and another on
+   a batch that did not. Overflow is clipped now, not accommodated. */
+.sets-members-table,
+.batch-table,
+.entry-grid {
+  width: min-content;
+}
+
+.col-check { width: calc(3ch + 1.2rem); }   /* the checkbox widget, not text */
+.col-label { width: calc(7ch + 1.2rem); }   /* "999-100" is the longest label */
+.col-spine-a,
+.col-spine-b { width: calc(8ch + 1.2rem); }
+.col-avg { width: calc(6ch + 1.2rem); }
+.col-ab { width: calc(5ch + 1.2rem); }
+.col-weight-g { width: calc(11ch + 1.2rem); }
+.col-weight-gr,
+.col-length { width: calc(12ch + 1.2rem); }
+.col-quality { width: calc(8ch + 1.2rem); }
+.col-ab-ok { width: calc(7ch + 1.2rem); }
+.col-in-spec { width: calc(8ch + 1.2rem); }
+.col-action { width: calc(9ch + 1.2rem); }  /* the Remove button, not text */
+
+/* The Batches list has one fixed column order and no shared column list,
+   so position is a safe key here in a way it is not for the tables above.
+   Order: Batch, Spine range, Diameter, Wood, Length (in), Shaft Source,
+   Purchased, Shafts. */
+.batch-table th:nth-child(1),
+.batch-table td:nth-child(1) { width: calc(6ch + 1.2rem); }
+.batch-table th:nth-child(2),
+.batch-table td:nth-child(2) { width: calc(12ch + 1.2rem); }
+.batch-table th:nth-child(3),
+.batch-table td:nth-child(3) { width: calc(9ch + 1.2rem); }
+.batch-table th:nth-child(4),
+.batch-table td:nth-child(4) { width: calc(13ch + 1.2rem); }
+.batch-table th:nth-child(5),
+.batch-table td:nth-child(5) { width: calc(12ch + 1.2rem); }
+.batch-table th:nth-child(6),
+.batch-table td:nth-child(6) { width: calc(15ch + 1.2rem); }
+.batch-table th:nth-child(7),
+.batch-table td:nth-child(7) { width: calc(10ch + 1.2rem); }
+.batch-table th:nth-child(8),
+.batch-table td:nth-child(8) { width: calc(7ch + 1.2rem); }
 
 .batch-table tbody tr.batch-row {
   cursor: pointer;
@@ -126,19 +206,27 @@ th.sortable:hover {
   background: var(--row-alt);
 }
 
+/* The arrow slot is reserved on EVERY sortable header, sorted or not, so
+   the header text never shifts when the sort changes. It was 1em, which
+   is about 1.7 characters in this monospace face -- that much dead space
+   in every column of every table, which is what made the columns look
+   padded. 1ch reserves exactly the one character the triangle needs. The
+   separating space moved out of `content` into this box, so the whole
+   allowance is the 1ch and nothing is added on top of it. */
 th.sortable::after {
   content: "";
   display: inline-block;
-  width: 1em;
+  width: 1ch;
+  text-align: right;
   color: var(--muted);
 }
 
 th.sorted-asc::after {
-  content: " \25B2";
+  content: "\25B2";
 }
 
 th.sorted-desc::after {
-  content: " \25BC";
+  content: "\25BC";
 }
 
 .form-hint {
@@ -168,26 +256,46 @@ th.sorted-desc::after {
   color: var(--muted);
 }
 
-/* table-layout: fixed splits width evenly across all 10 columns by
-   default. A %-based override for one column still shrinks with a narrow
-   window, which starved Actions of the fixed ~80px its two buttons need
-   -- so the columns with bounded content (#, A-B, Actions) get a stable
-   rem width instead, and the remaining columns (the entry inputs and
-   Notes) split whatever's left. */
+/* Content-sized, on the same `ch` basis as the tables above -- see the
+   "content-sized columns" comment there for how a width is arrived at.
+   One table with one fixed column order, so nth-child is a safe key here.
+   Order: #, Spine A, Spine B, Avg, A-B, Weight (g), Weight (gr),
+   Length (in), Quality, Notes, Actions.
+
+   The earlier version of this rule sized only columns 1, 5 and 10 and was
+   written when the grid had 10 columns. Adding Length (in) pushed Actions
+   to 11, so the rule for 10 has been sizing Notes ever since, and Actions
+   lost the fixed room its two buttons need. Every column is stated now,
+   which is also what lets thead and tbody resolve to the same total.
+
+   The editable columns allow more than their content needs: unlike a
+   read-only table, someone types into these, and a field that fits the
+   value exactly leaves no room to see what is being typed. */
+/* 26ch, wider than the other tables' 8ch # column: this one also carries
+   the set tag appended to the label ("21-04 - 20260913_Spruce57"), which
+   is now clipped at the column edge rather than allowed to widen it. */
 .entry-grid th:nth-child(1),
-.entry-grid td:nth-child(1) {
-  width: 9rem;
-}
-
+.entry-grid td:nth-child(1) { width: calc(26ch + 1.2rem); }
+.entry-grid th:nth-child(2),
+.entry-grid td:nth-child(2) { width: calc(8ch + 1.2rem); }
+.entry-grid th:nth-child(3),
+.entry-grid td:nth-child(3) { width: calc(8ch + 1.2rem); }
+.entry-grid th:nth-child(4),
+.entry-grid td:nth-child(4) { width: calc(6ch + 1.2rem); }
 .entry-grid th:nth-child(5),
-.entry-grid td:nth-child(5) {
-  width: 4rem;
-}
-
+.entry-grid td:nth-child(5) { width: calc(5ch + 1.2rem); }
+.entry-grid th:nth-child(6),
+.entry-grid td:nth-child(6) { width: calc(11ch + 1.2rem); }
+.entry-grid th:nth-child(7),
+.entry-grid td:nth-child(7) { width: calc(12ch + 1.2rem); }
+.entry-grid th:nth-child(8),
+.entry-grid td:nth-child(8) { width: calc(12ch + 1.2rem); }
+.entry-grid th:nth-child(9),
+.entry-grid td:nth-child(9) { width: calc(10ch + 1.2rem); }
 .entry-grid th:nth-child(10),
-.entry-grid td:nth-child(10) {
-  width: 5rem;
-}
+.entry-grid td:nth-child(10) { width: calc(14ch + 1.2rem); }
+.entry-grid th:nth-child(11),
+.entry-grid td:nth-child(11) { width: calc(8ch + 1.2rem); }
 
 .entry-grid .shaft-label {
   font-weight: bold;
@@ -303,6 +411,20 @@ fieldset {
   margin-bottom: 0.5rem;
 }
 
+.spine-check {
+  margin-bottom: 0.5rem;
+}
+
+.spine-check-heading {
+  font-weight: 600;
+}
+
+.spine-check-list {
+  color: var(--muted);
+  font-size: 0.9em;
+  margin: 0.15rem 0 0;
+}
+
 .keys-help {
   color: var(--muted);
   font-size: 0.85em;
@@ -392,6 +514,10 @@ fieldset {
   max-width: 680px;
 }
 
+.batch-details-form[hidden] {
+  display: none;
+}
+
 .batch-details-form label {
   display: flex;
   flex-direction: column;
@@ -399,6 +525,7 @@ fieldset {
 }
 
 .batch-details-form label.span-2,
+.batch-details-form p.span-2,
 .batch-details-form .form-actions {
   grid-column: 1 / -1;
 }
@@ -482,13 +609,33 @@ fieldset {
 
 .config-section {
   margin-bottom: 2.5rem;
-  max-width: 700px;
+  /* Was 700px, which is narrower than the widest of these lists now that
+     each column is sized to its own content rather than to an even split
+     -- a shaft source row needs room for a label, a url and notes. */
+  max-width: 950px;
 }
 
+/* Content-sized like the other tables. These lists have four different
+   shapes (wood has no extra field, diameter has 64ths, a shaft source has
+   url and notes, a spine band has min and max), so position is no key
+   here either -- config.js gives each cell a class. Before this, an even
+   split across six columns left the label input too narrow to show
+   "Dutch Bow Store" without cutting it off. */
 .config-list {
   border-collapse: collapse;
-  width: 100%;
+  width: min-content;
 }
+
+/* Wide enough for the two reorder buttons side by side. At 6ch they
+   wrapped one above the other and doubled the row height. */
+.col-move { width: calc(9ch + 1.2rem); white-space: nowrap; }
+.col-cfg-label { width: calc(18ch + 1.2rem); }
+.col-cfg-sixtyFourths,
+.col-cfg-band { width: calc(8ch + 1.2rem); }
+.col-cfg-url { width: calc(24ch + 1.2rem); }
+.col-cfg-notes { width: calc(20ch + 1.2rem); }
+.col-cfg-active { width: calc(4ch + 1.2rem); }
+.col-cfg-save { width: calc(8ch + 1.2rem); }
 
 .config-list td {
   border: 1px solid var(--border);
@@ -633,8 +780,11 @@ fieldset {
   text-align: right;
 }
 
+/* Notes is the one column whose content has no natural width, so it gets
+   a fixed allowance and an ellipsis. The full text is still readable on
+   hover -- see the attachHoverTooltip call in sets.js and analysis.js. */
 .notes-cell {
-  width: 10rem;
+  width: calc(10ch + 1.2rem);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

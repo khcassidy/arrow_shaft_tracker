@@ -7,6 +7,8 @@ import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from core.units import parse_length_in
+
 from app.api.schemas import BatchCreateRequest, BatchExtendRequest, BatchPatchRequest
 from app.db import repo_batches
 from app.deps import get_db
@@ -19,6 +21,7 @@ _BATCH_FIELD_MAP = {
     "shopId": "shop_id",
     "purchaseDate": "purchase_date",
     "description": "description",
+    "spineBandId": "spine_band_id",
 }
 
 
@@ -38,6 +41,8 @@ def _batch_dict(row: sqlite3.Row) -> dict:
         "description": row["description"],
         "entryMode": row["entry_mode"],
         "entryPass": row["entry_pass"],
+        "lengthCIn": row["length_c_in"],
+        "spineBandId": row["spine_band_id"],
     }
 
 
@@ -49,6 +54,7 @@ def list_batches(db: sqlite3.Connection = Depends(get_db)):
 @router.post("", status_code=201)
 def create_batch(body: BatchCreateRequest, db: sqlite3.Connection = Depends(get_db)):
     nominal_min, nominal_max = repo_batches.parse_nominal_range(body.nominalSpineLabel)
+    length_c_in = parse_length_in(body.length) if body.length is not None else None
     batch_id = repo_batches.create_batch(
         db,
         batch_no=body.batchNo,
@@ -62,6 +68,8 @@ def create_batch(body: BatchCreateRequest, db: sqlite3.Connection = Depends(get_
         purchase_date=body.purchaseDate,
         description=body.description,
         entry_mode=body.entryMode,
+        length_c_in=length_c_in,
+        spine_band_id=body.spineBandId,
     )
     return _batch_dict(repo_batches.get_batch(db, batch_id))
 
@@ -87,6 +95,8 @@ def patch_batch(
     batch_no = fields.pop("batchNo", None)
     nominal_label_given = "nominalSpineLabel" in fields
     nominal_label = fields.pop("nominalSpineLabel", None)
+    length_given = "length" in fields
+    length_raw = fields.pop("length", None)
 
     db_fields = {_BATCH_FIELD_MAP[k]: v for k, v in fields.items()}
     if nominal_label_given:
@@ -94,6 +104,8 @@ def patch_batch(
         db_fields["nominal_spine_label"] = nominal_label
         db_fields["nominal_min_lb"] = nominal_min
         db_fields["nominal_max_lb"] = nominal_max
+    if length_given:
+        db_fields["length_c_in"] = parse_length_in(length_raw) if length_raw is not None else None
 
     if batch_no is not None:
         repo_batches.rename_batch_no(db, batch_id, batch_no)

@@ -14,7 +14,7 @@ def test_partition_counts_reconcile_with_measurement_and_junk_state(client):
         f"/api/batches/{batch_id}/shafts/1",
         json={"spineA": "56", "spineB": "55", "weight": "23.23"},
     )
-    client.patch(f"/api/batches/{batch_id}/shafts/2", json={"straightness": "JUNK"})
+    client.patch(f"/api/batches/{batch_id}/shafts/2", json={"quality": "JUNK"})
 
     r = client.get("/api/partitions")
     partitions = r.json()

@@ -41,6 +41,7 @@ export async function renderConfig(root) {
     wrap.appendChild(await buildLookupSection(kind));
   }
 
+  wrap.appendChild(await buildSpineBandSection());
   wrap.appendChild(await buildEntryRulesSection());
 
   root.appendChild(wrap);
@@ -79,6 +80,7 @@ async function buildLookupSection(kind) {
     const tr = document.createElement("tr");
 
     const moveTd = document.createElement("td");
+    moveTd.className = "col-move";
     const upBtn = document.createElement("button");
     upBtn.type = "button";
     upBtn.textContent = "↑";
@@ -97,6 +99,7 @@ async function buildLookupSection(kind) {
     labelInput.type = "text";
     labelInput.value = option.label;
     const labelTd = document.createElement("td");
+    labelTd.className = "col-cfg-label";
     labelTd.appendChild(labelInput);
     tr.appendChild(labelTd);
 
@@ -107,11 +110,13 @@ async function buildLookupSection(kind) {
       input.value = option[field.key] ?? "";
       extraInputs[field.key] = input;
       const td = document.createElement("td");
+      td.className = `col-cfg-${field.key}`;
       td.appendChild(input);
       tr.appendChild(td);
     }
 
     const activeTd = document.createElement("td");
+    activeTd.className = "col-cfg-active";
     const activeCheckbox = document.createElement("input");
     activeCheckbox.type = "checkbox";
     activeCheckbox.checked = option.isActive;
@@ -127,6 +132,7 @@ async function buildLookupSection(kind) {
     tr.appendChild(activeTd);
 
     const saveTd = document.createElement("td");
+    saveTd.className = "col-cfg-save";
     const saveBtn = document.createElement("button");
     saveBtn.type = "button";
     saveBtn.textContent = "Save";
@@ -211,6 +217,170 @@ function buildAddForm(kind, extraFields, errorBox, renderRows) {
   });
 
   return form;
+}
+
+// ---- spine bands ----
+// A separate section, not a fourth LOOKUP_KINDS entry: a band's real
+// fields are a numeric (min, max) pair, not a typed label, so it doesn't
+// fit buildLookupSection's single-label-input row shape.
+
+async function buildSpineBandSection() {
+  const section = document.createElement("div");
+  section.className = "config-section";
+
+  const h2 = document.createElement("h2");
+  h2.textContent = "Spine bands";
+  section.appendChild(h2);
+
+  const hint = document.createElement("p");
+  hint.className = "form-hint";
+  hint.textContent =
+    "The bands a batch's own target spine can be assigned to, on that batch's page.";
+  section.appendChild(hint);
+
+  const table = document.createElement("table");
+  table.className = "config-list";
+  const tbody = document.createElement("tbody");
+  table.appendChild(tbody);
+  section.appendChild(table);
+
+  const errorBox = document.createElement("div");
+  errorBox.className = "form-error";
+  section.appendChild(errorBox);
+
+  function renderRows(bands) {
+    tbody.innerHTML = "";
+    bands.forEach((band, index) => tbody.appendChild(buildRow(band, index, bands)));
+  }
+
+  function buildRow(band, index, bands) {
+    const tr = document.createElement("tr");
+
+    const moveTd = document.createElement("td");
+    moveTd.className = "col-move";
+    const upBtn = document.createElement("button");
+    upBtn.type = "button";
+    upBtn.textContent = "↑";
+    upBtn.disabled = index === 0;
+    upBtn.addEventListener("click", () => reorder(bands, index, index - 1));
+    const downBtn = document.createElement("button");
+    downBtn.type = "button";
+    downBtn.textContent = "↓";
+    downBtn.disabled = index === bands.length - 1;
+    downBtn.addEventListener("click", () => reorder(bands, index, index + 1));
+    moveTd.appendChild(upBtn);
+    moveTd.appendChild(downBtn);
+    tr.appendChild(moveTd);
+
+    const minInput = document.createElement("input");
+    minInput.type = "number";
+    minInput.step = "any";
+    minInput.value = band.minMlb / 1000;
+    const minTd = document.createElement("td");
+    minTd.className = "col-cfg-band";
+    minTd.appendChild(minInput);
+    tr.appendChild(minTd);
+
+    const maxInput = document.createElement("input");
+    maxInput.type = "number";
+    maxInput.step = "any";
+    maxInput.value = band.maxMlb / 1000;
+    const maxTd = document.createElement("td");
+    maxTd.className = "col-cfg-band";
+    maxTd.appendChild(maxInput);
+    tr.appendChild(maxTd);
+
+    const activeTd = document.createElement("td");
+    activeTd.className = "col-cfg-active";
+    const activeCheckbox = document.createElement("input");
+    activeCheckbox.type = "checkbox";
+    activeCheckbox.checked = band.isActive;
+    activeCheckbox.addEventListener("change", async () => {
+      try {
+        await api.patch(`api/spine-bands/${band.id}`, { isActive: activeCheckbox.checked });
+      } catch (e) {
+        errorBox.textContent = e.message || "Could not update";
+        activeCheckbox.checked = !activeCheckbox.checked;
+      }
+    });
+    activeTd.appendChild(activeCheckbox);
+    tr.appendChild(activeTd);
+
+    const saveTd = document.createElement("td");
+    saveTd.className = "col-cfg-save";
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.textContent = "Save";
+    saveBtn.addEventListener("click", async () => {
+      errorBox.textContent = "";
+      try {
+        await api.patch(`api/spine-bands/${band.id}`, {
+          minLb: minInput.value,
+          maxLb: maxInput.value,
+        });
+        renderRows(await api.get("api/spine-bands"));
+      } catch (e) {
+        errorBox.textContent = e.message || "Could not save";
+      }
+    });
+    saveTd.appendChild(saveBtn);
+    tr.appendChild(saveTd);
+
+    return tr;
+  }
+
+  async function reorder(bands, fromIndex, toIndex) {
+    const ids = bands.map((b) => b.id);
+    [ids[fromIndex], ids[toIndex]] = [ids[toIndex], ids[fromIndex]];
+    errorBox.textContent = "";
+    try {
+      const updated = await api.put("api/spine-bands/order", { ids });
+      renderRows(updated);
+    } catch (e) {
+      errorBox.textContent = e.message || "Could not reorder";
+    }
+  }
+
+  const initial = await api.get("api/spine-bands");
+  renderRows(initial);
+
+  const form = document.createElement("form");
+  form.className = "config-add-form";
+
+  const minInput = document.createElement("input");
+  minInput.type = "number";
+  minInput.step = "any";
+  minInput.placeholder = "Min (lb)";
+  minInput.required = true;
+  form.appendChild(minInput);
+
+  const maxInput = document.createElement("input");
+  maxInput.type = "number";
+  maxInput.step = "any";
+  maxInput.placeholder = "Max (lb)";
+  maxInput.required = true;
+  form.appendChild(maxInput);
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "submit";
+  addBtn.textContent = "Add";
+  form.appendChild(addBtn);
+
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    errorBox.textContent = "";
+    try {
+      await api.post("api/spine-bands", { minLb: minInput.value, maxLb: maxInput.value });
+      const updated = await api.get("api/spine-bands");
+      renderRows(updated);
+      form.reset();
+    } catch (e) {
+      errorBox.textContent = e.message || "Could not add";
+    }
+  });
+
+  section.appendChild(form);
+  return section;
 }
 
 // ---- entry validation rules ----

@@ -25,7 +25,13 @@ export class OfflineError extends Error {
 }
 
 async function request(method, path, body) {
-  const opts = { method, headers: {} };
+  // Every /api/* response goes out with no Cache-Control of its own (only
+  // static /, /js/*, /css/* get that treatment, in app/main.py), so a GET
+  // repeated at the same URL within one page session -- e.g. entrygrid.js
+  // re-polling a batch's own /summary after a spine edit -- can otherwise
+  // be served straight from Chromium's HTTP cache instead of hitting the
+  // server, showing stale data with no error and no visible request.
+  const opts = { method, headers: {}, cache: "no-store" };
   if (body !== undefined) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);

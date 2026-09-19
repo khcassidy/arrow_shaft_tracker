@@ -10,6 +10,23 @@ import { shaftInfoColumns, shaftInfoHeaderCells, shaftInfoRowCells } from "./sha
 import { attachColumnSort } from "./tablesort.js";
 import { attachHoverTooltip } from "./tooltip.js";
 
+// The two columns shaftinfo.js knows nothing about: the candidate
+// picker's leading checkbox, and the member list's trailing Remove
+// button. Both carry a class for the same reason every shaftinfo.js
+// column does -- app.css sizes a column by class, never by position,
+// since these two sit at different indexes in different tables.
+function checkboxCell(tag) {
+  const cell = document.createElement(tag);
+  cell.className = "col-check";
+  return cell;
+}
+
+function actionCell(tag) {
+  const cell = document.createElement(tag);
+  cell.className = "col-action";
+  return cell;
+}
+
 export async function renderSets(root) {
   const wrap = document.createElement("div");
   wrap.className = "view view-sets";
@@ -64,7 +81,7 @@ async function buildBuilderSection(onSetCreated) {
   table.className = "sets-candidate-table sets-members-table";
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
-  headRow.appendChild(document.createElement("th")); // checkbox column, no header text, not sortable
+  headRow.appendChild(checkboxCell("th")); // checkbox column, no header text, not sortable
   const infoHeaderCells = shaftInfoHeaderCells();
   for (const th of infoHeaderCells) headRow.appendChild(th);
   thead.appendChild(headRow);
@@ -106,7 +123,7 @@ async function buildBuilderSection(onSetCreated) {
     for (const s of shafts) {
       const tr = document.createElement("tr");
 
-      const checkTd = document.createElement("td");
+      const checkTd = checkboxCell("td");
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkboxes.set(s.id, checkbox);
@@ -467,7 +484,7 @@ function buildAddMembersPicker(set, { onAdded }) {
     table.className = "sets-members-table";
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
-    headRow.appendChild(document.createElement("th")); // checkbox column
+    headRow.appendChild(checkboxCell("th")); // checkbox column
     const infoHeaderCells = shaftInfoHeaderCells();
     for (const th of infoHeaderCells) headRow.appendChild(th);
     thead.appendChild(headRow);
@@ -476,7 +493,7 @@ function buildAddMembersPicker(set, { onAdded }) {
     const rowsByShaftId = new Map();
     for (const s of available) {
       const tr = document.createElement("tr");
-      const checkTd = document.createElement("td");
+      const checkTd = checkboxCell("td");
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkboxes.set(s.id, checkbox);
@@ -546,7 +563,7 @@ function renderMembersTable(container, members, { onRemove = null } = {}) {
   const headRow = document.createElement("tr");
   const headerCells = shaftInfoHeaderCells();
   for (const th of headerCells) headRow.appendChild(th);
-  if (onRemove) headRow.appendChild(document.createElement("th")); // remove column
+  if (onRemove) headRow.appendChild(actionCell("th")); // remove column
   thead.appendChild(headRow);
   table.appendChild(thead);
   const tbody = document.createElement("tbody");
@@ -560,7 +577,7 @@ function renderMembersTable(container, members, { onRemove = null } = {}) {
       const tr = document.createElement("tr");
       for (const td of shaftInfoRowCells(m)) tr.appendChild(td);
       if (onRemove) {
-        const actionTd = document.createElement("td");
+        const actionTd = actionCell("td");
         const removeBtn = document.createElement("button");
         removeBtn.type = "button";
         removeBtn.className = "sets-member-remove-btn";
