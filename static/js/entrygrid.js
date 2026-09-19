@@ -5,7 +5,7 @@
 // instead of moving focus back.
 
 import { ApiError, OfflineError, api, patchShaftField } from "./api.js";
-import { loadLookup, loadSpineBands, optionEl, spineRangeLabel } from "./batches.js";
+import { loadLookup, loadSpineBands, spineRangeLabel } from "./batches.js";
 import {
   convertWeightLive,
   deriveWeightDisplay,
@@ -18,6 +18,7 @@ import { loadEntryRules } from "./entryrules.js";
 import { buildBatchExportLink } from "./importexport.js";
 import { attachColumnSort } from "./tablesort.js";
 import { attachHoverTooltip } from "./tooltip.js";
+import { decimalInput, field, optionEl, statusClass } from "./ui.js";
 
 const QUALITY_VALUES = ["USABLE", "BAD", "JUNK"];
 
@@ -326,54 +327,42 @@ export class EntryGrid {
       "shafts -- each shaft keeps the diameter and wood it had when it was created.";
     form.appendChild(diameterWoodHint);
 
-    function field(labelText, inputEl, { span2 = false } = {}) {
-      const label = document.createElement("label");
-      if (span2) label.className = "span-2";
-      label.appendChild(document.createTextNode(labelText));
-      label.appendChild(inputEl);
-      form.appendChild(label);
-      return inputEl;
-    }
-
     // Left column
     this.editBatchNo = document.createElement("input");
     this.editBatchNo.type = "number";
     this.editBatchNo.required = true;
-    field("Batch #", this.editBatchNo);
+    field(form, "Batch #", this.editBatchNo);
 
     this.editDiameter = document.createElement("select");
     for (const d of this.diameters) this.editDiameter.appendChild(optionEl(d.id, d.label));
-    field("Diameter", this.editDiameter);
+    field(form, "Diameter", this.editDiameter);
 
     this.editShop = document.createElement("select");
     this.editShop.appendChild(optionEl("", "(not recorded)"));
     for (const s of this.shops) this.editShop.appendChild(optionEl(s.id, s.label));
-    field("Shaft Source", this.editShop);
+    field(form, "Shaft Source", this.editShop);
 
     // Right column
     this.editSpineBand = document.createElement("select");
     this.editSpineBand.appendChild(optionEl("", "(not assigned)"));
     for (const b of this.spineBands) this.editSpineBand.appendChild(optionEl(b.id, b.label));
-    field("Spine range", this.editSpineBand);
+    field(form, "Spine range", this.editSpineBand);
 
     this.editWood = document.createElement("select");
     for (const w of this.woods) this.editWood.appendChild(optionEl(w.id, w.label));
-    field("Wood sort", this.editWood);
+    field(form, "Wood sort", this.editWood);
 
     this.editPurchaseDate = document.createElement("input");
     this.editPurchaseDate.type = "date";
-    field("Purchase date", this.editPurchaseDate);
+    field(form, "Purchase date", this.editPurchaseDate);
 
-    this.editLength = document.createElement("input");
-    this.editLength.type = "text";
-    this.editLength.inputMode = "decimal";
-    this.editLength.placeholder = "e.g. 32.25";
-    field("Default length (in)", this.editLength);
+    this.editLength = decimalInput("", { placeholder: "e.g. 32.25" });
+    field(form, "Default length (in)", this.editLength);
 
     // Full width
     this.editDescription = document.createElement("textarea");
     this.editDescription.rows = 3;
-    field("Comments", this.editDescription, { span2: true });
+    field(form, "Comments", this.editDescription, { span2: true });
 
     const actions = document.createElement("div");
     actions.className = "form-actions";
@@ -608,16 +597,20 @@ export class EntryGrid {
     }
   }
 
-  buildInputCell(seq, field, value) {
+  buildInputCell(seq, fieldName, value) {
     const td = document.createElement("td");
-    const input = document.createElement("input");
-    input.type = "text";
-    if (field !== "notes") input.inputMode = "decimal";
-    input.autocomplete = "off";
-    input.spellcheck = false;
-    input.value = value;
+    let input;
+    if (fieldName === "notes") {
+      input = document.createElement("input");
+      input.type = "text";
+      input.autocomplete = "off";
+      input.spellcheck = false;
+      input.value = value;
+    } else {
+      input = decimalInput(value);
+    }
     input.dataset.seq = String(seq);
-    input.dataset.field = field;
+    input.dataset.field = fieldName;
     td.appendChild(input);
     return td;
   }
@@ -630,16 +623,13 @@ export class EntryGrid {
   // entry ring's traversal order.
   buildLengthCell(shaft) {
     const td = document.createElement("td");
-    const input = document.createElement("input");
-    input.type = "text";
-    input.inputMode = "decimal";
-    input.autocomplete = "off";
-    input.spellcheck = false;
-    input.value = shaft.lengthCIn != null ? formatLengthIn(shaft.lengthCIn) : "";
-    input.placeholder =
+    const placeholder =
       shaft.lengthCIn == null && shaft.effectiveLengthCIn != null
         ? formatLengthIn(shaft.effectiveLengthCIn)
         : "";
+    const input = decimalInput(shaft.lengthCIn != null ? formatLengthIn(shaft.lengthCIn) : "", {
+      placeholder,
+    });
     input.dataset.seq = String(shaft.seq);
     input.dataset.field = "length";
     td.appendChild(input);
@@ -655,23 +645,13 @@ export class EntryGrid {
     const display = deriveWeightDisplay(shaft);
 
     const tdG = document.createElement("td");
-    const inputG = document.createElement("input");
-    inputG.type = "text";
-    inputG.inputMode = "decimal";
-    inputG.autocomplete = "off";
-    inputG.spellcheck = false;
-    inputG.value = display.weightG;
+    const inputG = decimalInput(display.weightG);
     inputG.dataset.seq = String(shaft.seq);
     inputG.dataset.field = "weightG";
     tdG.appendChild(inputG);
 
     const tdGr = document.createElement("td");
-    const inputGr = document.createElement("input");
-    inputGr.type = "text";
-    inputGr.inputMode = "decimal";
-    inputGr.autocomplete = "off";
-    inputGr.spellcheck = false;
-    inputGr.value = display.weightGr;
+    const inputGr = decimalInput(display.weightGr);
     inputGr.dataset.seq = String(shaft.seq);
     inputGr.dataset.field = "weightGr";
     tdGr.appendChild(inputGr);
@@ -951,8 +931,7 @@ export class EntryGrid {
   setCellStatus(seq, field, level, messages) {
     const cell = this.ring.cellFor(seq, field);
     if (!cell) return;
-    cell.classList.remove("status-ok", "status-warn", "status-error", "status-saving", "status-queued");
-    cell.classList.add(`status-${level}`);
+    statusClass(cell, level);
     cell.title = messages && messages.length ? messages.map((m) => m.message).join("; ") : "";
   }
 

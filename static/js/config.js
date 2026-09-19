@@ -6,6 +6,8 @@
 // they can be tweaked and re-run without leaving that page.
 
 import { api } from "./api.js";
+import { displayFromMinor, minorFromInput } from "./fmt.js";
+import { field, numberInput } from "./ui.js";
 
 const LOOKUP_KINDS = {
   diameter: {
@@ -403,46 +405,38 @@ async function buildEntryRulesSection() {
   const form = document.createElement("form");
   form.className = "config-params-form";
 
-  function field(labelText, inputEl) {
-    const label = document.createElement("label");
-    label.appendChild(document.createTextNode(labelText));
-    label.appendChild(inputEl);
-    form.appendChild(label);
-    return inputEl;
-  }
+  const spineStep = numberInput(displayFromMinor(rules.spineStepCp, 2));
+  field(form, "Spine step (lb)", spineStep);
+  const weightStep = numberInput(displayFromMinor(rules.weightStepCg, 2));
+  field(form, "Weight step (g)", weightStep);
 
-  const spineStep = numberInput(rules.spineStepCp / 100);
-  field("Spine step (lb)", spineStep);
-  const weightStep = numberInput(rules.weightStepCg / 100);
-  field("Weight step (g)", weightStep);
+  const spineHardMin = numberInput(displayFromMinor(rules.spineHardMinCp, 2));
+  field(form, "Spine hard minimum (lb)", spineHardMin);
+  const spineHardMax = numberInput(displayFromMinor(rules.spineHardMaxCp, 2));
+  field(form, "Spine hard maximum (lb)", spineHardMax);
+  const spineWarnMin = numberInput(displayFromMinor(rules.spineWarnMinCp, 2));
+  field(form, "Spine warn below (lb)", spineWarnMin);
+  const spineWarnMax = numberInput(displayFromMinor(rules.spineWarnMaxCp, 2));
+  field(form, "Spine warn above (lb)", spineWarnMax);
 
-  const spineHardMin = numberInput(rules.spineHardMinCp / 100);
-  field("Spine hard minimum (lb)", spineHardMin);
-  const spineHardMax = numberInput(rules.spineHardMaxCp / 100);
-  field("Spine hard maximum (lb)", spineHardMax);
-  const spineWarnMin = numberInput(rules.spineWarnMinCp / 100);
-  field("Spine warn below (lb)", spineWarnMin);
-  const spineWarnMax = numberInput(rules.spineWarnMaxCp / 100);
-  field("Spine warn above (lb)", spineWarnMax);
+  const weightHardMin = numberInput(displayFromMinor(rules.weightHardMinCg, 2));
+  field(form, "Weight hard minimum (g)", weightHardMin);
+  const weightHardMax = numberInput(displayFromMinor(rules.weightHardMaxCg, 2));
+  field(form, "Weight hard maximum (g)", weightHardMax);
+  const weightWarnMin = numberInput(displayFromMinor(rules.weightWarnMinCg, 2));
+  field(form, "Weight warn below (g)", weightWarnMin);
+  const weightWarnMax = numberInput(displayFromMinor(rules.weightWarnMaxCg, 2));
+  field(form, "Weight warn above (g)", weightWarnMax);
 
-  const weightHardMin = numberInput(rules.weightHardMinCg / 100);
-  field("Weight hard minimum (g)", weightHardMin);
-  const weightHardMax = numberInput(rules.weightHardMaxCg / 100);
-  field("Weight hard maximum (g)", weightHardMax);
-  const weightWarnMin = numberInput(rules.weightWarnMinCg / 100);
-  field("Weight warn below (g)", weightWarnMin);
-  const weightWarnMax = numberInput(rules.weightWarnMaxCg / 100);
-  field("Weight warn above (g)", weightWarnMax);
-
-  const batchOutlierSpine = numberInput(rules.batchOutlierSpineCp / 100);
-  field("Batch outlier: spine distance from median (lb)", batchOutlierSpine);
-  const batchOutlierWeight = numberInput(rules.batchOutlierWeightCg / 100);
-  field("Batch outlier: weight distance from median (g)", batchOutlierWeight);
+  const batchOutlierSpine = numberInput(displayFromMinor(rules.batchOutlierSpineCp, 2));
+  field(form, "Batch outlier: spine distance from median (lb)", batchOutlierSpine);
+  const batchOutlierWeight = numberInput(displayFromMinor(rules.batchOutlierWeightCg, 2));
+  field(form, "Batch outlier: weight distance from median (g)", batchOutlierWeight);
 
   const grainsPerGram = document.createElement("input");
   grainsPerGram.type = "text";
   grainsPerGram.value = rules.grainsPerGram;
-  field("Grains per gram", grainsPerGram);
+  field(form, "Grains per gram", grainsPerGram);
 
   const saveBtn = document.createElement("button");
   saveBtn.type = "submit";
@@ -458,18 +452,18 @@ async function buildEntryRulesSection() {
     errorBox.textContent = "";
     try {
       await api.patch("api/config/entry-rules", {
-        spineStepCp: Math.round(Number(spineStep.value) * 100),
-        weightStepCg: Math.round(Number(weightStep.value) * 100),
-        spineHardMinCp: Math.round(Number(spineHardMin.value) * 100),
-        spineHardMaxCp: Math.round(Number(spineHardMax.value) * 100),
-        spineWarnMinCp: Math.round(Number(spineWarnMin.value) * 100),
-        spineWarnMaxCp: Math.round(Number(spineWarnMax.value) * 100),
-        weightHardMinCg: Math.round(Number(weightHardMin.value) * 100),
-        weightHardMaxCg: Math.round(Number(weightHardMax.value) * 100),
-        weightWarnMinCg: Math.round(Number(weightWarnMin.value) * 100),
-        weightWarnMaxCg: Math.round(Number(weightWarnMax.value) * 100),
-        batchOutlierSpineCp: Math.round(Number(batchOutlierSpine.value) * 100),
-        batchOutlierWeightCg: Math.round(Number(batchOutlierWeight.value) * 100),
+        spineStepCp: minorFromInput(spineStep.value, 2),
+        weightStepCg: minorFromInput(weightStep.value, 2),
+        spineHardMinCp: minorFromInput(spineHardMin.value, 2),
+        spineHardMaxCp: minorFromInput(spineHardMax.value, 2),
+        spineWarnMinCp: minorFromInput(spineWarnMin.value, 2),
+        spineWarnMaxCp: minorFromInput(spineWarnMax.value, 2),
+        weightHardMinCg: minorFromInput(weightHardMin.value, 2),
+        weightHardMaxCg: minorFromInput(weightHardMax.value, 2),
+        weightWarnMinCg: minorFromInput(weightWarnMin.value, 2),
+        weightWarnMaxCg: minorFromInput(weightWarnMax.value, 2),
+        batchOutlierSpineCp: minorFromInput(batchOutlierSpine.value, 2),
+        batchOutlierWeightCg: minorFromInput(batchOutlierWeight.value, 2),
         grainsPerGram: grainsPerGram.value,
       });
     } catch (e) {
@@ -479,12 +473,4 @@ async function buildEntryRulesSection() {
 
   section.appendChild(form);
   return section;
-}
-
-function numberInput(value) {
-  const input = document.createElement("input");
-  input.type = "number";
-  input.step = "any";
-  input.value = value;
-  return input;
 }

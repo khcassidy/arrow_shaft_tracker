@@ -9,6 +9,7 @@ import { api } from "./api.js";
 import { shaftInfoColumns, shaftInfoHeaderCells, shaftInfoRowCells } from "./shaftinfo.js";
 import { attachColumnSort } from "./tablesort.js";
 import { attachHoverTooltip } from "./tooltip.js";
+import { detailsBlock, labeledInline, optionEl } from "./ui.js";
 
 // The two columns shaftinfo.js knows nothing about: the candidate
 // picker's leading checkbox, and the member list's trailing Remove
@@ -388,18 +389,7 @@ function buildNotesBlock(set, onNotesSaved) {
 // added and removed -- reloading just this panel after either action,
 // never the whole Built sets list, so the panel stays open.
 function buildMembersDetails(set, { active, onMemberCountChanged, onPoolChanged }) {
-  const details = document.createElement("details");
-  details.className = "sets-card-members";
-
-  const summary = document.createElement("summary");
-  function updateSummary() {
-    summary.textContent = `Shafts (${set.memberCount})`;
-  }
-  updateSummary();
-  details.appendChild(summary);
-
   const body = document.createElement("div");
-  details.appendChild(body);
 
   async function reload() {
     try {
@@ -430,12 +420,13 @@ function buildMembersDetails(set, { active, onMemberCountChanged, onPoolChanged 
     }
   }
 
-  let loaded = false;
-  details.addEventListener("toggle", async () => {
-    if (!details.open || loaded) return;
-    loaded = true;
-    await reload();
-  });
+  const details = detailsBlock(`Shafts (${set.memberCount})`, { onFirstOpen: reload });
+  details.className = "sets-card-members";
+  const summary = details.querySelector("summary");
+  function updateSummary() {
+    summary.textContent = `Shafts (${set.memberCount})`;
+  }
+  details.appendChild(body);
 
   return details;
 }
@@ -594,19 +585,3 @@ function renderMembersTable(container, members, { onRemove = null } = {}) {
   renderRows();
 }
 
-// ---- shared helpers ----
-
-function optionEl(value, label) {
-  const opt = document.createElement("option");
-  opt.value = String(value);
-  opt.textContent = label;
-  return opt;
-}
-
-function labeledInline(labelText, inputEl) {
-  const label = document.createElement("label");
-  label.className = "sets-inline-label";
-  label.appendChild(document.createTextNode(labelText));
-  label.appendChild(inputEl);
-  return label;
-}

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Shaft Tracker -- tests</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; }
+  ul { list-style: none; padding-left: 0; }
+  li { padding: 0.15rem 0; }
+</style>
+</head>
+<body>
+<h1>Shaft Tracker -- pure-function tests</h1>
+<div id="results"></div>
+<script type="module">
+  import { report } from "./js/testkit.js";
+  import "./js/fmt.test.js";
+  report(document.getElementById("results"));
+</script>
+</body>
+</html>

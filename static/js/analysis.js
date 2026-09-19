@@ -8,10 +8,11 @@
 // leaving a picture of the pool that no longer matches the database.
 
 import { api } from "./api.js";
-import { formatSpineMlb, formatWeightCg } from "./fmt.js";
+import { displayFromMinor, formatSpineMlb, formatWeightCg, minorFromInput } from "./fmt.js";
 import { shaftInfoColumns, shaftInfoHeaderCells, shaftInfoRowCells } from "./shaftinfo.js";
 import { attachColumnSort } from "./tablesort.js";
 import { attachHoverTooltip } from "./tooltip.js";
+import { detailsBlock, field, labeledInline, numberInput, optionEl } from "./ui.js";
 
 export async function renderAnalysis(root) {
   const wrap = document.createElement("div");
@@ -252,33 +253,22 @@ export async function renderAnalysis(root) {
   // the page. Always edits whichever set paramSetSelect has selected,
   // rather than a second picker of its own.
   function buildParamsEditor() {
-    const details = document.createElement("details");
+    const details = detailsBlock("Edit parameters");
     details.className = "analysis-params-editor";
-    const summary = document.createElement("summary");
-    summary.textContent = "Edit parameters";
-    details.appendChild(summary);
 
     const form = document.createElement("form");
     form.className = "config-params-form";
 
-    function field(labelText, inputEl) {
-      const label = document.createElement("label");
-      label.appendChild(document.createTextNode(labelText));
-      label.appendChild(inputEl);
-      form.appendChild(label);
-      return inputEl;
-    }
-
     const nameInput = document.createElement("input");
     nameInput.type = "text";
     nameInput.required = true;
-    field("Name", nameInput);
+    field(form, "Name", nameInput);
 
     const spineTol = numberInput(0);
-    field("Max spine spread in a group (lb)", spineTol);
+    field(form, "Max spine spread in a group (lb)", spineTol);
 
     const weightTol = numberInput(0);
-    field("Max weight spread in a group (g)", weightTol);
+    field(form, "Max weight spread in a group (g)", weightTol);
 
     const objectiveInput = document.createElement("select");
     for (const [value, text] of [
@@ -290,25 +280,25 @@ export async function renderAnalysis(root) {
       opt.textContent = text;
       objectiveInput.appendChild(opt);
     }
-    field("Grouping objective", objectiveInput);
+    field(form, "Grouping objective", objectiveInput);
 
     const dozenSizeInput = numberInput(0);
-    field("Dozen size", dozenSizeInput);
+    field(form, "Dozen size", dozenSizeInput);
 
     const specMin = numberInput(0);
-    field("Spine spec floor (lb)", specMin);
+    field(form, "Spine spec floor (lb)", specMin);
 
     const specMax = numberInput(0);
-    field("Spine spec ceiling (lb)", specMax);
+    field(form, "Spine spec ceiling (lb)", specMax);
 
     const abTol = numberInput(0);
-    field("Max A–B spine difference (lb)", abTol);
+    field(form, "Max A–B spine difference (lb)", abTol);
 
     const minGroupSizeInput = numberInput(0);
-    field("Usable group threshold (shafts)", minGroupSizeInput);
+    field(form, "Usable group threshold (shafts)", minGroupSizeInput);
 
     const lengthTolInput = numberInput("");
-    field("Max length spread in a group (in) — blank disables", lengthTolInput);
+    field(form, "Max length spread in a group (in) — blank disables", lengthTolInput);
 
     const actions = document.createElement("div");
     actions.className = "config-params-actions";
@@ -342,15 +332,15 @@ export async function renderAnalysis(root) {
       const current = selected();
       if (!current) return;
       nameInput.value = current.name;
-      spineTol.value = current.spineTolMlb / 1000;
-      weightTol.value = current.weightTolCg / 100;
+      spineTol.value = displayFromMinor(current.spineTolMlb, 3);
+      weightTol.value = displayFromMinor(current.weightTolCg, 2);
       objectiveInput.value = current.objective;
       dozenSizeInput.value = current.dozenSize;
-      specMin.value = current.specMinMlb / 1000;
-      specMax.value = current.specMaxMlb / 1000;
-      abTol.value = current.abTolCp / 100;
+      specMin.value = displayFromMinor(current.specMinMlb, 3);
+      specMax.value = displayFromMinor(current.specMaxMlb, 3);
+      abTol.value = displayFromMinor(current.abTolCp, 2);
       minGroupSizeInput.value = current.minGroupSize;
-      lengthTolInput.value = current.lengthTolCIn != null ? current.lengthTolCIn / 100 : "";
+      lengthTolInput.value = current.lengthTolCIn != null ? displayFromMinor(current.lengthTolCIn, 2) : "";
       errorBox.textContent = "";
       defaultBtn.textContent = current.isDefault ? "Default set" : "Make default";
       defaultBtn.disabled = current.isDefault;
@@ -358,15 +348,15 @@ export async function renderAnalysis(root) {
 
     function fieldsFromForm() {
       return {
-        spineTolMlb: Math.round(Number(spineTol.value) * 1000),
-        weightTolCg: Math.round(Number(weightTol.value) * 100),
+        spineTolMlb: minorFromInput(spineTol.value, 3),
+        weightTolCg: minorFromInput(weightTol.value, 2),
         objective: objectiveInput.value,
         dozenSize: Number(dozenSizeInput.value),
-        specMinMlb: Math.round(Number(specMin.value) * 1000),
-        specMaxMlb: Math.round(Number(specMax.value) * 1000),
-        abTolCp: Math.round(Number(abTol.value) * 100),
+        specMinMlb: minorFromInput(specMin.value, 3),
+        specMaxMlb: minorFromInput(specMax.value, 3),
+        abTolCp: minorFromInput(abTol.value, 2),
         minGroupSize: Number(minGroupSizeInput.value),
-        lengthTolCIn: lengthTolInput.value === "" ? null : Math.round(Number(lengthTolInput.value) * 100),
+        lengthTolCIn: lengthTolInput.value === "" ? null : minorFromInput(lengthTolInput.value, 2),
       };
     }
 
@@ -442,14 +432,6 @@ export async function renderAnalysis(root) {
   await runAnalysis();
 }
 
-function numberInput(value) {
-  const input = document.createElement("input");
-  input.type = "number";
-  input.step = "any";
-  input.value = value;
-  return input;
-}
-
 // Shared by the group card's own display and analysisParamsNote below,
 // so the two never drift into showing different numbers for the same
 // group.
@@ -495,19 +477,4 @@ function analysisParamsNote(paramSet, body, group) {
 
   const { spine, weight } = spineWeightSummaryLines(group);
   return `${parts.join(", ")}.\n${spine}\n${weight}`;
-}
-
-function optionEl(value, label) {
-  const opt = document.createElement("option");
-  opt.value = String(value);
-  opt.textContent = label;
-  return opt;
-}
-
-function labeledInline(labelText, inputEl) {
-  const label = document.createElement("label");
-  label.className = "sets-inline-label";
-  label.appendChild(document.createTextNode(labelText));
-  label.appendChild(inputEl);
-  return label;
 }

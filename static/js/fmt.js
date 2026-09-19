@@ -30,6 +30,19 @@ export function formatLengthIn(cIn) {
   return formatMinor(cIn, 2);
 }
 
+// The typed-input/display-value counterpart to formatMinor above: a form
+// field showing a minor-unit value reads and writes it through these two,
+// instead of a hand-written Math.round(Number(x.value) * scale) at every
+// call site. Same non-authoritative status as the rest of this file --
+// the server re-parses the raw typed text through Decimal on commit.
+export function minorFromInput(text, decimals) {
+  return Math.round(Number(text) * 10 ** decimals);
+}
+
+export function displayFromMinor(value, decimals) {
+  return value / 10 ** decimals;
+}
+
 export function formatQuality(value) {
   if (!value) return "–";
   return value.charAt(0) + value.slice(1).toLowerCase();
