@@ -96,6 +96,38 @@ export function buildImportForm() {
       reportEl.appendChild(skipped);
     }
 
+    // Lookup labels the file names but this database does not have yet.
+    // These are NOT errors: commit creates them. They are shown so the
+    // archer can spot a typo before committing, which is the whole point
+    // of previewing first.
+    const toCreate = [];
+    const lookups = report.lookupsToCreate || {};
+    for (const [kind, labels] of [
+      ["diameter", lookups.diameter],
+      ["wood", lookups.wood],
+      ["shop", lookups.shop],
+      ["spine band", report.spineBandsToCreate],
+    ]) {
+      for (const label of labels || []) toCreate.push(`${kind} "${label}"`);
+    }
+    if (toCreate.length > 0) {
+      const heading = document.createElement("p");
+      heading.className = "import-warning";
+      heading.textContent =
+        toCreate.length === 1
+          ? "Will also add 1 new entry to your lists -- check it is not a typo:"
+          : `Will also add ${toCreate.length} new entries to your lists -- ` +
+            "check none is a typo:";
+      reportEl.appendChild(heading);
+      const list = document.createElement("ul");
+      for (const item of toCreate) {
+        const li = document.createElement("li");
+        li.textContent = item;
+        list.appendChild(li);
+      }
+      reportEl.appendChild(list);
+    }
+
     if (report.errors.length > 0) {
       const errHeading = document.createElement("p");
       errHeading.className = "import-errors-heading";

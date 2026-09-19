@@ -3,6 +3,7 @@
 // returns them (sort_order, not alphabetical) -- see repo_lookups.py.
 
 import { api } from "./api.js";
+import { formatLengthIn } from "./fmt.js";
 import { buildExportLinks, buildImportForm } from "./importexport.js";
 import { attachColumnSort } from "./tablesort.js";
 
@@ -17,12 +18,26 @@ export function optionEl(value, label) {
   return opt;
 }
 
+export async function loadSpineBands() {
+  return api.get("api/spine-bands");
+}
+
+// Resolves a batch's spine-range display text: the assigned band's label
+// when spineBandId is set, else the legacy free-text nominalSpineLabel
+// (older/imported batches never got a band assigned) -- same fallback
+// entrygrid.js's updateTitle() uses.
+export function spineRangeLabel(batch, spineBands) {
+  const band = spineBands.find((b) => b.id === batch.spineBandId);
+  return band ? band.label : batch.nominalSpineLabel || "";
+}
+
 export async function renderBatchList(root) {
-  const [batches, diameters, woods, shops] = await Promise.all([
+  const [batches, diameters, woods, shops, spineBands] = await Promise.all([
     api.get("api/batches"),
     loadLookup("diameter"),
     loadLookup("wood"),
     loadLookup("shop"),
+    loadSpineBands(),
   ]);
 
   const wrap = document.createElement("div");
@@ -32,7 +47,7 @@ export async function renderBatchList(root) {
   heading.textContent = "Batches";
   wrap.appendChild(heading);
 
-  wrap.appendChild(buildBatchTable(batches, diameters, woods, shops));
+  wrap.appendChild(buildBatchTable(batches, diameters, woods, shops, spineBands));
   wrap.appendChild(buildCreateForm());
   wrap.appendChild(buildExportLinks());
   wrap.appendChild(buildImportForm());
@@ -45,24 +60,29 @@ export async function renderBatchList(root) {
 // key here, since a batch row's raw values (numbers, short labels) are
 // already exactly what should be compared, unlike shaftinfo.js's tables
 // where a formatted display string and its sort value can differ.
-function batchColumns(diameters, woods, shops) {
+function batchColumns(diameters, woods, shops, spineBands) {
   const diameterLabel = (b) => diameters.find((d) => d.id === b.diameterId)?.label || "Unknown";
   const woodLabel = (b) => woods.find((w) => w.id === b.woodId)?.label || "Unknown";
   const shopLabel = (b) => shops.find((s) => s.id === b.shopId)?.label || "";
 
   return [
     { label: "Batch", get: (b) => b.batchNo },
-    { label: "Spine range", get: (b) => b.nominalSpineLabel || "" },
+    { label: "Spine range", get: (b) => spineRangeLabel(b, spineBands) },
     { label: "Diameter", get: diameterLabel },
     { label: "Wood", get: woodLabel },
+    {
+      label: "Length (in)",
+      get: (b) => (b.lengthCIn != null ? formatLengthIn(b.lengthCIn) : ""),
+      sortValue: (b) => b.lengthCIn,
+    },
     { label: "Shaft Source", get: shopLabel },
     { label: "Purchased", get: (b) => b.purchaseDate || "" },
     { label: "Shafts", get: (b) => b.expectedCount },
   ];
 }
 
-function buildBatchTable(batches, diameters, woods, shops) {
-  const columns = batchColumns(diameters, woods, shops);
+function buildBatchTable(batches, diameters, woods, shops, spineBands) {
+  const columns = batchColumns(diameters, woods, shops, spineBands);
   const table = document.createElement("table");
   table.className = "batch-table";
 
@@ -105,7 +125,7 @@ function buildBatchTable(batches, diameters, woods, shops) {
 
   const sorter = attachColumnSort(
     headerCells,
-    columns.map((c) => ({ sortValue: c.get })),
+    columns.map((c) => ({ sortValue: c.sortValue || c.get })),
     renderRows
   );
 

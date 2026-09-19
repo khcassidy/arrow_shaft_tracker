@@ -5,20 +5,46 @@
 // instead of moving focus back.
 
 import { ApiError, OfflineError, api, patchShaftField } from "./api.js";
-import { loadLookup, optionEl } from "./batches.js";
-import { convertWeightLive, deriveWeightDisplay, formatSpineCp, formatSpineMlb } from "./fmt.js";
+import { loadLookup, loadSpineBands, optionEl, spineRangeLabel } from "./batches.js";
+import {
+  convertWeightLive,
+  deriveWeightDisplay,
+  formatLengthIn,
+  formatSpineCp,
+  formatSpineMlb,
+} from "./fmt.js";
 import { FocusRing, buildRing } from "./focusring.js";
 import { loadEntryRules } from "./entryrules.js";
 import { buildBatchExportLink } from "./importexport.js";
+import { attachColumnSort } from "./tablesort.js";
 import { attachHoverTooltip } from "./tooltip.js";
 
-const STRAIGHTNESS_VALUES = ["EXCELLENT", "OK", "BAD", "JUNK"];
+const QUALITY_VALUES = ["USABLE", "BAD", "JUNK"];
+
+// Display order only -- see renderTable()'s sort wiring. Enter/Tab always
+// follows shaft sequence regardless of the current sort (buildRing() reads
+// this.shafts in seq order and never sees the sorted-for-display order),
+// so resorting mid-batch never changes where the keyboard goes next.
+const ENTRY_GRID_COLUMNS = [
+  { label: "#", sortValue: (s) => [s.batchNo, s.seq] },
+  { label: "Spine A", sortValue: (s) => s.spineACp },
+  { label: "Spine B", sortValue: (s) => s.spineBCp },
+  { label: "Avg", sortValue: (s) => s.avgSpineMlb },
+  { label: "A–B", sortValue: (s) => s.spineSpreadCp },
+  { label: "Weight (g)", sortValue: (s) => s.weightCg },
+  { label: "Weight (gr)", sortValue: (s) => s.weightCg },
+  { label: "Length (in)", sortValue: (s) => s.effectiveLengthCIn },
+  { label: "Quality", sortValue: (s) => s.quality || "" },
+  { label: "Notes", sortValue: (s) => s.notes || "" },
+  { label: "Actions" }, // no sortValue -- attachColumnSort skips it, same as a checkbox column
+];
 
 export class EntryGrid {
   constructor(root) {
     this.root = root;
     this.batchId = null;
     this.batch = null;
+    this.spineBands = [];
     this.shafts = [];
     this.rules = null;
     this.pass = null;
@@ -35,12 +61,13 @@ export class EntryGrid {
 
   async mount(batchId) {
     this.batchId = batchId;
-    const [batch, rules, diameters, woods, shops, sets] = await Promise.all([
+    const [batch, rules, diameters, woods, shops, spineBands, sets] = await Promise.all([
       api.get(`api/batches/${batchId}`),
       loadEntryRules(),
       loadLookup("diameter"),
       loadLookup("wood"),
       loadLookup("shop"),
+      loadSpineBands(),
       api.get("api/sets"),
     ]);
     this.batch = batch;
@@ -48,6 +75,7 @@ export class EntryGrid {
     this.diameters = diameters;
     this.woods = woods;
     this.shops = shops;
+    this.spineBands = spineBands;
     // Consumed shafts carry only consumedSetId; look up its name here so
     // buildRow doesn't need a request per row. Fetched once at mount --
     // a set built in another tab mid-session won't retag a row here until
@@ -78,7 +106,8 @@ export class EntryGrid {
           spineB: shaft.spineBText || null,
           weightG: weightDisplay.weightG || null,
           weightGr: weightDisplay.weightGr || null,
-          straightness: shaft.straightness || null,
+          length: shaft.lengthCIn != null ? formatLengthIn(shaft.lengthCIn) : null,
+          quality: shaft.quality || null,
           notes: shaft.notes || null,
         },
         // Separate from lastSaved.weightG/weightGr: those two also hold
@@ -131,6 +160,9 @@ export class EntryGrid {
     this.countsEl = document.createElement("div");
     this.countsEl.className = "counts-line";
     wrap.appendChild(this.countsEl);
+    this.spineCheckEl = document.createElement("div");
+    this.spineCheckEl.className = "spine-check";
+    wrap.appendChild(this.spineCheckEl);
 
     const keysHelp = document.createElement("div");
     keysHelp.className = "keys-help";
@@ -150,12 +182,51 @@ export class EntryGrid {
 
     this.root.appendChild(wrap);
     this.refreshCounts();
+    this.refreshSpineCheck();
+  }
+
+  // Fetches how this batch's own shafts compare to its assigned spine
+  // band (see batch_summary's spineCheck) -- a server round trip, unlike
+  // refreshCounts()'s purely local tally, so it's only called on mount,
+  // after a spine-affecting commit, and after the assigned band itself
+  // changes, not on every keystroke.
+  async refreshSpineCheck() {
+    let summary;
+    try {
+      summary = await api.get(`api/batches/${this.batchId}/summary`);
+    } catch {
+      return; // best-effort: leave the panel as it was
+    }
+    this.spineCheckEl.innerHTML = "";
+    const check = summary.spineCheck;
+    if (!check) return;
+
+    const heading = document.createElement("div");
+    heading.className = "spine-check-heading";
+    heading.textContent =
+      `${summary.spineBand.label}# target: ${check.inSpecCount} in spec · ` +
+      `${check.belowCount} below · ${check.aboveCount} above` +
+      (check.unmeasuredCount > 0 ? ` · ${check.unmeasuredCount} not yet measured` : "");
+    this.spineCheckEl.appendChild(heading);
+
+    function shaftList(title, shafts) {
+      if (shafts.length === 0) return null;
+      const p = document.createElement("p");
+      p.className = "spine-check-list";
+      const parts = shafts.map((s) => `${s.label} (${formatSpineMlb(s.avgSpineMlb)})`);
+      p.textContent = `${title}: ${parts.join(", ")}`;
+      return p;
+    }
+
+    const belowEl = shaftList("Below", check.below);
+    if (belowEl) this.spineCheckEl.appendChild(belowEl);
+    const aboveEl = shaftList("Above", check.above);
+    if (aboveEl) this.spineCheckEl.appendChild(aboveEl);
   }
 
   updateTitle() {
-    this.titleEl.textContent = `Batch ${this.batch.batchNo}${
-      this.batch.nominalSpineLabel ? " · " + this.batch.nominalSpineLabel : ""
-    }`;
+    const spineRange = spineRangeLabel(this.batch, this.spineBands);
+    this.titleEl.textContent = `Batch ${this.batch.batchNo}${spineRange ? " · " + spineRange : ""}`;
   }
 
   // ---- batch details: batch #, spine label, diameter, wood, shop,
@@ -273,10 +344,10 @@ export class EntryGrid {
     field("Shaft Source", this.editShop);
 
     // Right column
-    this.editNominalLabel = document.createElement("input");
-    this.editNominalLabel.type = "text";
-    this.editNominalLabel.placeholder = "e.g. 55-60#";
-    field("Spine range label", this.editNominalLabel);
+    this.editSpineBand = document.createElement("select");
+    this.editSpineBand.appendChild(optionEl("", "(not assigned)"));
+    for (const b of this.spineBands) this.editSpineBand.appendChild(optionEl(b.id, b.label));
+    field("Spine range", this.editSpineBand);
 
     this.editWood = document.createElement("select");
     for (const w of this.woods) this.editWood.appendChild(optionEl(w.id, w.label));
@@ -285,6 +356,12 @@ export class EntryGrid {
     this.editPurchaseDate = document.createElement("input");
     this.editPurchaseDate.type = "date";
     field("Purchase date", this.editPurchaseDate);
+
+    this.editLength = document.createElement("input");
+    this.editLength.type = "text";
+    this.editLength.inputMode = "decimal";
+    this.editLength.placeholder = "e.g. 32.25";
+    field("Default length (in)", this.editLength);
 
     // Full width
     this.editDescription = document.createElement("textarea");
@@ -323,11 +400,12 @@ export class EntryGrid {
 
   populateDetailsForm() {
     this.editBatchNo.value = String(this.batch.batchNo);
-    this.editNominalLabel.value = this.batch.nominalSpineLabel || "";
+    this.editSpineBand.value = this.batch.spineBandId != null ? String(this.batch.spineBandId) : "";
     this.editDiameter.value = String(this.batch.diameterId);
     this.editWood.value = String(this.batch.woodId);
     this.editShop.value = this.batch.shopId != null ? String(this.batch.shopId) : "";
     this.editPurchaseDate.value = this.batch.purchaseDate || "";
+    this.editLength.value = this.batch.lengthCIn != null ? formatLengthIn(this.batch.lengthCIn) : "";
     this.editDescription.value = this.batch.description || "";
     this.detailsErrorEl.textContent = "";
   }
@@ -337,21 +415,26 @@ export class EntryGrid {
     try {
       const updated = await api.patch(`api/batches/${this.batchId}`, {
         batchNo: Number(this.editBatchNo.value),
-        nominalSpineLabel: this.editNominalLabel.value || null,
+        spineBandId: this.editSpineBand.value ? Number(this.editSpineBand.value) : null,
         diameterId: Number(this.editDiameter.value),
         woodId: Number(this.editWood.value),
         shopId: this.editShop.value ? Number(this.editShop.value) : null,
         purchaseDate: this.editPurchaseDate.value || null,
+        length: this.editLength.value || null,
         description: this.editDescription.value || null,
       });
       this.batch = updated;
       // A batch-number change relabels every shaft server-side (see
-      // rename_batch_no); refresh the '#' column to match, without a full
-      // reload that would drop in-progress edits and focus.
+      // rename_batch_no), and a batch-length change is a live default --
+      // every shaft with no override of its own now reads a different
+      // effectiveLengthCIn. Refresh both without a full reload that would
+      // drop in-progress edits and focus.
       this.shafts = await api.get(`api/batches/${this.batchId}/shafts`);
       this.refreshShaftLabels();
+      this.refreshShaftLengths();
       this.updateTitle();
       this.updateDetailsSummary();
+      this.refreshSpineCheck();
       this.detailsFormEl.hidden = true;
       this._showEditButton();
     } catch (e) {
@@ -392,7 +475,7 @@ export class EntryGrid {
     for (const [value, text] of [
       ["spine", "Spine"],
       ["weight", "Weight"],
-      ["straightness", "Straightness"],
+      ["quality", "Quality"],
     ]) {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -422,31 +505,38 @@ export class EntryGrid {
 
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
-    const headers = [
-      "#",
-      "Spine A",
-      "Spine B",
-      "Avg",
-      "A–B",
-      "Weight (g)",
-      "Weight (gr)",
-      "Str",
-      "Notes",
-      "Actions",
-    ];
-    for (const text of headers) {
+    const headerCells = [];
+    for (const column of ENTRY_GRID_COLUMNS) {
       const th = document.createElement("th");
-      th.textContent = text;
+      th.textContent = column.label;
       headRow.appendChild(th);
+      headerCells.push(th);
     }
     thead.appendChild(headRow);
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
+    const rowsBySeq = new Map();
     for (const shaft of this.shafts) {
-      tbody.appendChild(this.buildRow(shaft));
+      const tr = this.buildRow(shaft);
+      rowsBySeq.set(shaft.seq, tr);
+      tbody.appendChild(tr);
     }
     table.appendChild(tbody);
+
+    // Reorders the existing <tr> elements on a header click -- never
+    // rebuilds them, so an in-progress typed value, focus, or pending
+    // commit survives a resort (same technique as the Sets tab's
+    // candidate picker, for the same reason: rebuilding would lose it).
+    const sorter = attachColumnSort(
+      headerCells,
+      ENTRY_GRID_COLUMNS.map((c) => ({ sortValue: c.sortValue })),
+      () => {
+        for (const shaft of sorter.sortRows(this.shafts)) {
+          tbody.appendChild(rowsBySeq.get(shaft.seq));
+        }
+      }
+    );
 
     this.table = table;
     return table;
@@ -483,7 +573,8 @@ export class EntryGrid {
     tr.appendChild(weightGTd);
     tr.appendChild(weightGrTd);
 
-    tr.appendChild(this.buildStraightnessCell(shaft));
+    tr.appendChild(this.buildLengthCell(shaft));
+    tr.appendChild(this.buildQualityCell(shaft));
     tr.appendChild(this.buildInputCell(shaft.seq, "notes", shaft.notes || ""));
     tr.appendChild(this.buildActionsCell(shaft));
 
@@ -520,6 +611,30 @@ export class EntryGrid {
     input.value = value;
     input.dataset.seq = String(seq);
     input.dataset.field = field;
+    td.appendChild(input);
+    return td;
+  }
+
+  // Blank here visibly means "using the batch default": the shaft has no
+  // length_c_in of its own, so the placeholder shows the batch's current
+  // effectiveLengthCIn instead of a saved value. Not part of buildRing()
+  // (same as notes) -- Tab/Enter still commits it through the generic
+  // commitField/blur path below, it just isn't a stop on the keyboard
+  // entry ring's traversal order.
+  buildLengthCell(shaft) {
+    const td = document.createElement("td");
+    const input = document.createElement("input");
+    input.type = "text";
+    input.inputMode = "decimal";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.value = shaft.lengthCIn != null ? formatLengthIn(shaft.lengthCIn) : "";
+    input.placeholder =
+      shaft.lengthCIn == null && shaft.effectiveLengthCIn != null
+        ? formatLengthIn(shaft.effectiveLengthCIn)
+        : "";
+    input.dataset.seq = String(shaft.seq);
+    input.dataset.field = "length";
     td.appendChild(input);
     return td;
   }
@@ -591,22 +706,21 @@ export class EntryGrid {
     return td;
   }
 
-  buildStraightnessCell(shaft) {
+  // No blank option: quality is NOT NULL DEFAULT 'USABLE' server-side, so
+  // every shaft already has a real rating from the moment it's created --
+  // there's no "not yet assessed" state left to represent here.
+  buildQualityCell(shaft) {
     const td = document.createElement("td");
     const select = document.createElement("select");
     select.dataset.seq = String(shaft.seq);
-    select.dataset.field = "straightness";
-    const blank = document.createElement("option");
-    blank.value = "";
-    blank.textContent = "–";
-    select.appendChild(blank);
-    for (const value of STRAIGHTNESS_VALUES) {
+    select.dataset.field = "quality";
+    for (const value of QUALITY_VALUES) {
       const opt = document.createElement("option");
       opt.value = value;
       opt.textContent = value.charAt(0) + value.slice(1).toLowerCase();
       select.appendChild(opt);
     }
-    select.value = shaft.straightness || "";
+    select.value = shaft.quality || "USABLE";
     td.appendChild(select);
     return td;
   }
@@ -740,6 +854,7 @@ export class EntryGrid {
       }
     }
     this.refreshCounts();
+    if (field === "spineA" || field === "spineB") this.refreshSpineCheck();
   }
 
   applyServerRow(seq, row) {
@@ -747,6 +862,17 @@ export class EntryGrid {
     if (avgTd) avgTd.textContent = formatSpineMlb(row.avgSpineMlb);
     const spreadTd = this.table.querySelector(`[data-row-seq="${seq}"][data-readout="spread"]`);
     if (spreadTd) spreadTd.textContent = formatSpineCp(row.spineSpreadCp);
+
+    // Clearing this shaft's own override reverts it to inheriting the
+    // batch default -- the placeholder needs to pick that up even though
+    // nothing else about this row changed.
+    const lengthCell = this.ring.cellFor(seq, "length");
+    if (lengthCell) {
+      lengthCell.placeholder =
+        row.lengthCIn == null && row.effectiveLengthCIn != null
+          ? formatLengthIn(row.effectiveLengthCIn)
+          : "";
+    }
 
     // Always resync both weight columns from the authoritative response,
     // regardless of which field was just committed: row already carries
@@ -770,6 +896,22 @@ export class EntryGrid {
       const row = this.table.querySelector(`tr[data-row-seq="${shaft.seq}"]`);
       const labelTd = row?.querySelector(".shaft-label");
       if (labelTd) this.renderLabelCell(labelTd, shaft);
+    }
+  }
+
+  // A batch-length edit is a live default: every shaft still inheriting
+  // (lengthCIn null) needs its placeholder updated to the new value,
+  // without touching any shaft that already has its own override.
+  refreshShaftLengths() {
+    for (const shaft of this.shafts) {
+      const cell = this.ring.cellFor(shaft.seq, "length");
+      if (!cell) continue;
+      cell.placeholder =
+        shaft.lengthCIn == null && shaft.effectiveLengthCIn != null
+          ? formatLengthIn(shaft.effectiveLengthCIn)
+          : "";
+      this.rowState.get(shaft.seq).lastSaved.length =
+        shaft.lengthCIn != null ? formatLengthIn(shaft.lengthCIn) : null;
     }
   }
 
@@ -917,19 +1059,19 @@ export class EntryGrid {
     let spineA = 0;
     let spineB = 0;
     let weight = 0;
-    let straightness = 0;
+    let quality = 0;
     let attention = 0;
     for (const [, state] of this.rowState) {
       if (state.lastSaved.spineA !== null) spineA++;
       if (state.lastSaved.spineB !== null) spineB++;
       if (state.weightDone) weight++;
-      if (state.lastSaved.straightness !== null) straightness++;
+      if (state.lastSaved.quality !== null) quality++;
       if (state.errors.size > 0) attention++;
     }
     const total = this.shafts.length;
     let text =
       `${total} shafts · spine A ${spineA}/${total} · spine B ${spineB}/${total} · ` +
-      `weight ${weight}/${total} · straightness ${straightness}/${total}`;
+      `weight ${weight}/${total} · quality ${quality}/${total}`;
     if (attention > 0) text += `      ⚠ ${attention} need attention`;
     this.countsEl.textContent = text;
   }

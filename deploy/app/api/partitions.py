@@ -45,13 +45,13 @@ def list_partitions(db: sqlite3.Connection = Depends(get_db)):
              s.wood_id, w.label AS wood_label,
              COUNT(*) AS total,
              SUM(CASE WHEN s.consumed_set_id IS NOT NULL THEN 1 ELSE 0 END) AS consumed,
-             SUM(CASE WHEN s.straightness = 'JUNK' THEN 1 ELSE 0 END) AS junk,
+             SUM(CASE WHEN s.quality = 'JUNK' THEN 1 ELSE 0 END) AS junk,
              SUM(CASE WHEN s.consumed_set_id IS NULL
-                       AND (s.straightness IS NULL OR s.straightness <> 'JUNK')
+                       AND s.quality <> 'JUNK'
                        AND s.avg_spine_mlb IS NOT NULL AND s.weight_cg IS NOT NULL
                   THEN 1 ELSE 0 END) AS available,
              SUM(CASE WHEN s.consumed_set_id IS NULL
-                       AND (s.straightness IS NULL OR s.straightness <> 'JUNK')
+                       AND s.quality <> 'JUNK'
                        AND (s.avg_spine_mlb IS NULL OR s.weight_cg IS NULL)
                   THEN 1 ELSE 0 END) AS unmeasured
            FROM shaft s

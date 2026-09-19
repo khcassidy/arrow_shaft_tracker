@@ -23,6 +23,7 @@ _PARAM_FIELD_MAP = {
     "specMaxMlb": "spec_max_mlb",
     "abTolCp": "ab_tol_cp",
     "minGroupSize": "min_group_size",
+    "lengthTolCIn": "length_tol_c_in",
 }
 
 _ENTRY_RULE_FIELD_MAP = {
@@ -57,6 +58,7 @@ def _param_set_dict(row: sqlite3.Row) -> dict:
         "specMaxMlb": row["spec_max_mlb"],
         "abTolCp": row["ab_tol_cp"],
         "minGroupSize": row["min_group_size"],
+        "lengthTolCIn": row["length_tol_c_in"],
     }
 
 
@@ -78,6 +80,7 @@ def create_params(body: ParamSetCreateRequest, db: sqlite3.Connection = Depends(
         spec_max_mlb=body.specMaxMlb,
         ab_tol_cp=body.abTolCp,
         min_group_size=body.minGroupSize,
+        length_tol_c_in=body.lengthTolCIn,
     )
     row = db.execute("SELECT * FROM param_set WHERE id = ?", (param_set_id,)).fetchone()
     return _param_set_dict(row)

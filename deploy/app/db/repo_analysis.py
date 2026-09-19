@@ -37,7 +37,9 @@ def _shaft_summary(row: sqlite3.Row, param_set: sqlite3.Row) -> dict:
         "weightCg": row["weight_cg"],
         "weightText": row["weight_text"],
         "weightUnit": row["weight_unit"],
-        "straightness": row["straightness"],
+        "lengthCIn": row["length_c_in"],
+        "effectiveLengthCIn": row["effective_length_c_in"],
+        "quality": row["quality"],
         "notes": row["notes"],
         "abConsistent": ab_consistent(row["spine_spread_cp"], param_set["ab_tol_cp"]),
         "inSpec": in_spec(row["avg_spine_mlb"], param_set["spec_min_mlb"], param_set["spec_max_mlb"]),
@@ -73,8 +75,18 @@ def run_analysis(
             r for r in rows
             if in_spec(r["avg_spine_mlb"], param_set["spec_min_mlb"], param_set["spec_max_mlb"])
         ]
+    length_tol_c_in = param_set["length_tol_c_in"]
+    if length_tol_c_in is not None:
+        # A shaft with no known length (its own and the batch's both
+        # unset) can't be measured against a length tolerance -- the same
+        # "not analysable" reasoning list_partition_shafts already
+        # applies to a missing avg_spine_mlb/weight_cg.
+        rows = [r for r in rows if r["effective_length_c_in"] is not None]
     rows_by_id = {r["id"]: r for r in rows}
-    candidates = [ShaftCandidate(r["id"], r["avg_spine_mlb"], r["weight_cg"]) for r in rows]
+    candidates = [
+        ShaftCandidate(r["id"], r["avg_spine_mlb"], r["weight_cg"], r["effective_length_c_in"])
+        for r in rows
+    ]
 
     objective = param_set["objective"]
     min_group_size = param_set["min_group_size"]
@@ -84,6 +96,7 @@ def run_analysis(
             spine_tol_mlb=param_set["spine_tol_mlb"],
             weight_tol_cg=param_set["weight_tol_cg"],
             dozen_size=param_set["dozen_size"],
+            length_tol_c_in=length_tol_c_in,
         )
         status = solution.status
         # A dozen size doesn't divide the pool evenly, or the box
@@ -94,7 +107,10 @@ def run_analysis(
         # leftover pool, on top of the dozens already found.
         leftover_candidates = [
             ShaftCandidate(
-                sid, rows_by_id[sid]["avg_spine_mlb"], rows_by_id[sid]["weight_cg"]
+                sid,
+                rows_by_id[sid]["avg_spine_mlb"],
+                rows_by_id[sid]["weight_cg"],
+                rows_by_id[sid]["effective_length_c_in"],
             )
             for sid in solution.unused_shaft_ids
         ]
@@ -103,6 +119,7 @@ def run_analysis(
             spine_tol_mlb=param_set["spine_tol_mlb"],
             weight_tol_cg=param_set["weight_tol_cg"],
             min_group_size=min_group_size,
+            length_tol_c_in=length_tol_c_in,
         )
         leftover_ids = {sid for g in leftover_groups for sid in g.shaft_ids}
         unused_shaft_ids = [sid for sid in solution.unused_shaft_ids if sid not in leftover_ids]
@@ -118,6 +135,7 @@ def run_analysis(
             spine_tol_mlb=param_set["spine_tol_mlb"],
             weight_tol_cg=param_set["weight_tol_cg"],
             min_group_size=min_group_size,
+            length_tol_c_in=length_tol_c_in,
         )
         status = "OPTIMAL"
         used_ids = {sid for g in all_groups for sid in g.shaft_ids}

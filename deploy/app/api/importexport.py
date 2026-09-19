@@ -65,14 +65,28 @@ def import_preview(
     # synchronously -- every endpoint here is `def`, never `async def`,
     # since sqlite3 blocks and a sync def runs in Starlette's threadpool.
     raw = file.file.read().decode("utf-8-sig")
+    lookup_defs = band_defs = None
     if format == "csv":
         staged_rows = csv_io.to_staged_rows(csv_io.read_csv_rows(raw))
     elif format == "json":
-        staged_rows = json_io.to_staged_rows(json.loads(raw))
+        # A JSON backup carries its own diameter/wood/shop/band lists. They
+        # are passed through so a label the target database lacks is created
+        # WITH its attributes, not as a bare label -- see repo_import.py.
+        data = json.loads(raw)
+        staged_rows = json_io.to_staged_rows(data)
+        lookup_defs = json_io.lookup_definitions(data)
+        band_defs = json_io.band_definitions(data)
     else:
         raise HTTPException(400, f"unknown import format {format!r}")
 
-    return repo_import.stage_rows(db, staged_rows, file.filename or "upload", format)
+    return repo_import.stage_rows(
+        db,
+        staged_rows,
+        file.filename or "upload",
+        format,
+        lookup_defs=lookup_defs,
+        band_defs=band_defs,
+    )
 
 
 @router.post("/import/commit")

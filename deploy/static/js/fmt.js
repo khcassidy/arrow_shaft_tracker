@@ -26,7 +26,11 @@ export function formatWeightCg(cg) {
   return formatMinor(cg, 2);
 }
 
-export function formatStraightness(value) {
+export function formatLengthIn(cIn) {
+  return formatMinor(cIn, 2);
+}
+
+export function formatQuality(value) {
   if (!value) return "–";
   return value.charAt(0) + value.slice(1).toLowerCase();
 }

@@ -75,6 +75,26 @@ def parse_weight_g(raw: str) -> int:
     return cg
 
 
+def parse_spine_band_lb(raw: str) -> int:
+    """Parse a spine-band boundary in pounds to millipounds -- the same
+    unit avg_spine_mlb is stored in, so a band's bounds compare directly
+    against it with no scaling at the call site."""
+    value = normalize_decimal_string(raw, max_dp=2)
+    mlb = _to_minor(value, MILLI)
+    if mlb <= 0:
+        raise UnitError("NOT_POSITIVE", f"{raw!r} must be a positive spine value")
+    return mlb
+
+
+def parse_length_in(raw: str) -> int:
+    """Parse a shaft length in inches to centi-inches. Raises UnitError."""
+    value = normalize_decimal_string(raw, max_dp=2)
+    c_in = _to_minor(value, CENTI)
+    if c_in <= 0:
+        raise UnitError("NOT_POSITIVE", f"{raw!r} must be a positive length value")
+    return c_in
+
+
 def grains_to_weight_cg(raw: str) -> int:
     """Parse a weight in grains to centigrams. Lossy: 1 g = 15.4324 gr exactly,
     but 1 gr does not divide evenly back into whole centigrams."""
@@ -107,6 +127,10 @@ def format_spine_cp(cp: int) -> str:
 
 def format_weight_cg(cg: int) -> str:
     return str((Decimal(cg) / CENTI).quantize(Decimal("0.01")))
+
+
+def format_length_in(c_in: int) -> str:
+    return str((Decimal(c_in) / CENTI).quantize(Decimal("0.01")))
 
 
 def format_avg_spine_mlb(mlb: int) -> str:

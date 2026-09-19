@@ -14,7 +14,17 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app import settings
-from app.api import analysis, batches, importexport, lookups, params, partitions, sets, shafts
+from app.api import (
+    analysis,
+    batches,
+    importexport,
+    lookups,
+    params,
+    partitions,
+    sets,
+    shafts,
+    spine_bands,
+)
 from app.api.errors import register_error_handlers
 from app.db.connection import connect
 from app.db.migrate import migrate
@@ -57,6 +67,7 @@ app.include_router(partitions.router)
 app.include_router(sets.router)
 app.include_router(analysis.router)
 app.include_router(importexport.router)
+app.include_router(spine_bands.router)
 
 
 @app.get("/api/health")

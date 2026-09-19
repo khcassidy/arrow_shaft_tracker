@@ -307,6 +307,9 @@ export async function renderAnalysis(root) {
     const minGroupSizeInput = numberInput(0);
     field("Usable group threshold (shafts)", minGroupSizeInput);
 
+    const lengthTolInput = numberInput("");
+    field("Max length spread in a group (in) — blank disables", lengthTolInput);
+
     const actions = document.createElement("div");
     actions.className = "config-params-actions";
 
@@ -347,6 +350,7 @@ export async function renderAnalysis(root) {
       specMax.value = current.specMaxMlb / 1000;
       abTol.value = current.abTolCp / 100;
       minGroupSizeInput.value = current.minGroupSize;
+      lengthTolInput.value = current.lengthTolCIn != null ? current.lengthTolCIn / 100 : "";
       errorBox.textContent = "";
       defaultBtn.textContent = current.isDefault ? "Default set" : "Make default";
       defaultBtn.disabled = current.isDefault;
@@ -362,6 +366,7 @@ export async function renderAnalysis(root) {
         specMaxMlb: Math.round(Number(specMax.value) * 1000),
         abTolCp: Math.round(Number(abTol.value) * 100),
         minGroupSize: Number(minGroupSizeInput.value),
+        lengthTolCIn: lengthTolInput.value === "" ? null : Math.round(Number(lengthTolInput.value) * 100),
       };
     }
 
@@ -483,6 +488,9 @@ function analysisParamsNote(paramSet, body, group) {
   }
   parts.push(`max spine spread ${(paramSet.spineTolMlb / 1000).toFixed(3)} lb`);
   parts.push(`max weight spread ${(paramSet.weightTolCg / 100).toFixed(2)} g`);
+  if (paramSet.lengthTolCIn != null) {
+    parts.push(`max length spread ${(paramSet.lengthTolCIn / 100).toFixed(2)} in`);
+  }
   parts.push(`pool ${poolLabel}`);
 
   const { spine, weight } = spineWeightSummaryLines(group);

@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 import sqlite3
 
+from core.derive import spine_band_status
 from core.labels import required_seq_width, shaft_label
 
 _NOMINAL_RANGE_RE = re.compile(r"^(\d+)-(\d+)#?$")
@@ -40,14 +41,16 @@ def create_batch(
     purchase_date: str | None = None,
     description: str | None = None,
     entry_mode: str = "per_shaft",
+    length_c_in: int | None = None,
+    spine_band_id: int | None = None,
 ) -> int:
     seq_width = required_seq_width(expected_count)
     cur = conn.execute(
         """INSERT INTO batch
            (batch_no, seq_width, nominal_spine_label, nominal_min_lb, nominal_max_lb,
             diameter_id, wood_id, shop_id, purchase_date, expected_count,
-            description, entry_mode, entry_pass)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            description, entry_mode, entry_pass, length_c_in, spine_band_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             batch_no,
             seq_width,
@@ -62,6 +65,8 @@ def create_batch(
             description,
             entry_mode,
             "spine" if entry_mode == "per_field" else None,
+            length_c_in,
+            spine_band_id,
         ),
     )
     batch_id = cur.lastrowid
@@ -119,25 +124,46 @@ _ALLOWED_BATCH_COLUMNS = {
     "shop_id",
     "purchase_date",
     "description",
+    "length_c_in",
+    "spine_band_id",
 }
 
 
 def update_batch(conn: sqlite3.Connection, batch_id: int, fields: dict) -> None:
     """Edits batch metadata after creation: spine label, diameter, wood,
-    shop, purchase date, comments. batch_no goes through rename_batch_no
-    instead, since it needs to relabel every shaft in the batch. seq_width
-    is never editable: it is derived once from the count at creation and
-    every label's padding depends on it staying fixed. Does NOT cascade
-    diameter_id or wood_id to existing shafts; those carry the truth the
-    analysis reads (see the shaft table's own diameter_id/wood_id), and
-    only ever change there explicitly, never as a silent side effect of a
-    batch edit.
+    shop, purchase date, comments, default length. batch_no goes through
+    rename_batch_no instead, since it needs to relabel every shaft in the
+    batch. seq_width is never editable: it is derived once from the count
+    at creation and every label's padding depends on it staying fixed.
+
+    A diameter_id or wood_id change cascades to every shaft in the batch
+    still carrying the *old* value: the default assumption is that one
+    batch is one diameter and one wood throughout, so correcting the
+    batch corrects its shafts too (see core/grouping.py's partition
+    query, which reads diameter_id/wood_id from the shaft row, not the
+    batch row). A shaft already consumed into a set is excluded, since
+    that set's own diameterId/woodId was fixed at build time and must
+    not silently drift out of step with its member; a shaft whose
+    diameter_id/wood_id no longer matches the batch's old value is also
+    excluded, since it has already been deliberately set apart from the
+    rest of the batch. length_c_in cascades too, but via a different
+    mechanism already in place: a shaft's own length_c_in stays NULL
+    until someone types an override, and shaft_entry_v's
+    effective_length_c_in reads it live, so no explicit cascade is
+    needed here for that column.
     """
     if not fields:
         return
     unknown = set(fields) - _ALLOWED_BATCH_COLUMNS
     if unknown:
         raise ValueError(f"not a batch column: {unknown}")
+
+    old_batch = None
+    if "diameter_id" in fields or "wood_id" in fields:
+        old_batch = get_batch(conn, batch_id)
+        if old_batch is None:
+            raise ValueError(f"no such batch {batch_id}")
+
     columns = ", ".join(f"{key} = ?" for key in fields)
     values = list(fields.values()) + [batch_id]
     conn.execute(
@@ -145,6 +171,16 @@ def update_batch(conn: sqlite3.Connection, batch_id: int, fields: dict) -> None:
         f"WHERE id = ?",
         values,
     )
+
+    if old_batch is not None:
+        for column in ("diameter_id", "wood_id"):
+            if column in fields:
+                conn.execute(
+                    f"UPDATE shaft SET {column} = ? WHERE batch_id = ? AND {column} = ? "
+                    f"AND consumed_set_id IS NULL",
+                    (fields[column], batch_id, old_batch[column]),
+                )
+
     conn.commit()
 
 
@@ -190,9 +226,9 @@ def batch_summary(conn: sqlite3.Connection, batch_id: int) -> dict:
         """SELECT
              COUNT(*) AS total,
              SUM(CASE WHEN weight_cg IS NOT NULL AND avg_spine_mlb IS NOT NULL
-                      AND (straightness IS NULL OR straightness <> 'JUNK')
+                      AND quality <> 'JUNK'
                  THEN 1 ELSE 0 END) AS available,
-             SUM(CASE WHEN straightness = 'JUNK' THEN 1 ELSE 0 END) AS junk,
+             SUM(CASE WHEN quality = 'JUNK' THEN 1 ELSE 0 END) AS junk,
              SUM(CASE WHEN consumed_set_id IS NOT NULL THEN 1 ELSE 0 END) AS consumed,
              MIN(avg_spine_mlb) AS min_avg_spine_mlb,
              MAX(avg_spine_mlb) AS max_avg_spine_mlb,
@@ -201,7 +237,53 @@ def batch_summary(conn: sqlite3.Connection, batch_id: int) -> dict:
            FROM shaft WHERE batch_id = ?""",
         (batch_id,),
     ).fetchone()
-    return dict(row)
+    result = {
+        "total": row["total"],
+        "available": row["available"],
+        "junk": row["junk"],
+        "consumed": row["consumed"],
+        "minAvgSpineMlb": row["min_avg_spine_mlb"],
+        "maxAvgSpineMlb": row["max_avg_spine_mlb"],
+        "minWeightCg": row["min_weight_cg"],
+        "maxWeightCg": row["max_weight_cg"],
+        "spineBand": None,
+        "spineCheck": None,
+    }
+
+    batch = get_batch(conn, batch_id)
+    if batch["spine_band_id"] is not None:
+        band = conn.execute(
+            "SELECT * FROM spine_band WHERE id = ?", (batch["spine_band_id"],)
+        ).fetchone()
+        result["spineBand"] = {
+            "id": band["id"],
+            "label": band["label"],
+            "minMlb": band["min_mlb"],
+            "maxMlb": band["max_mlb"],
+        }
+        measured = conn.execute(
+            "SELECT label, avg_spine_mlb FROM shaft "
+            "WHERE batch_id = ? AND avg_spine_mlb IS NOT NULL ORDER BY seq",
+            (batch_id,),
+        ).fetchall()
+        below, above, in_spec = [], [], 0
+        for shaft in measured:
+            status = spine_band_status(shaft["avg_spine_mlb"], band["min_mlb"], band["max_mlb"])
+            if status == "BELOW":
+                below.append(shaft)
+            elif status == "ABOVE":
+                above.append(shaft)
+            else:
+                in_spec += 1
+        result["spineCheck"] = {
+            "inSpecCount": in_spec,
+            "belowCount": len(below),
+            "aboveCount": len(above),
+            "unmeasuredCount": result["total"] - len(measured),
+            "below": [{"label": s["label"], "avgSpineMlb": s["avg_spine_mlb"]} for s in below],
+            "above": [{"label": s["label"], "avgSpineMlb": s["avg_spine_mlb"]} for s in above],
+        }
+    return result
 
 
 def extend_batch(conn: sqlite3.Connection, batch_id: int, additional_count: int) -> int:

@@ -20,7 +20,8 @@ class ShaftPatchRequest(BaseModel):
     spineB: StrictStr | None = None
     weight: StrictStr | None = None
     weightUnit: Literal["g", "gr"] | None = None
-    straightness: Literal["EXCELLENT", "OK", "BAD", "JUNK"] | None = None
+    length: StrictStr | None = None
+    quality: Literal["USABLE", "BAD", "JUNK"] | None = None
     notes: StrictStr | None = None
 
 
@@ -43,6 +44,8 @@ class BatchCreateRequest(BaseModel):
     purchaseDate: StrictStr | None = None
     description: StrictStr | None = None
     entryMode: Literal["per_shaft", "per_field"] = "per_shaft"
+    length: StrictStr | None = None
+    spineBandId: int | None = None
 
 
 class BatchExtendRequest(BaseModel):
@@ -62,6 +65,8 @@ class BatchPatchRequest(BaseModel):
     shopId: int | None = None
     purchaseDate: StrictStr | None = None
     description: StrictStr | None = None
+    length: StrictStr | None = None
+    spineBandId: int | None = None
 
 
 class LookupCreateRequest(BaseModel):
@@ -83,6 +88,21 @@ class LookupOrderRequest(BaseModel):
     ids: list[int]
 
 
+class SpineBandCreateRequest(BaseModel):
+    minLb: StrictStr
+    maxLb: StrictStr
+
+
+class SpineBandPatchRequest(BaseModel):
+    minLb: StrictStr | None = None
+    maxLb: StrictStr | None = None
+    isActive: bool | None = None
+
+
+class SpineBandOrderRequest(BaseModel):
+    ids: list[int]
+
+
 class ParamSetCreateRequest(BaseModel):
     name: StrictStr
     spineTolMlb: int
@@ -93,6 +113,7 @@ class ParamSetCreateRequest(BaseModel):
     specMaxMlb: int
     abTolCp: int
     minGroupSize: int = Field(default=3, ge=1)
+    lengthTolCIn: int | None = None
 
 
 class ParamSetPatchRequest(BaseModel):
@@ -105,6 +126,7 @@ class ParamSetPatchRequest(BaseModel):
     specMaxMlb: int | None = None
     abTolCp: int | None = None
     minGroupSize: int | None = None
+    lengthTolCIn: int | None = None
 
 
 class SetCreateRequest(BaseModel):
