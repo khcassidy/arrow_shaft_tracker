@@ -908,7 +908,8 @@ fieldset {
 .col-arw-bareweight,
 .col-arw-afterfinish,
 .col-arw-delta,
-.col-arw-finished { width: calc(10ch + 1.2rem); }
+.col-arw-finished,
+.col-arw-totaldelta { width: calc(10ch + 1.2rem); }
 
 /* th.sortable's own generic rule (app.css, shared by every sortable
    table) sets white-space: nowrap, which is right for the short,

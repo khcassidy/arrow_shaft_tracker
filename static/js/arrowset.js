@@ -14,6 +14,7 @@
 import { api } from "./api.js";
 import { formatWeightCg } from "./fmt.js";
 import { FocusRing } from "./focusring.js";
+import { buildNotesBlock } from "./sets.js";
 import { attachColumnSort } from "./tablesort.js";
 import { attachHoverTooltip } from "./tooltip.js";
 import { commitOnBlur, commitOnChange, labeledInline, optionEl, optionLabel, pickableOptions } from "./ui.js";
@@ -49,6 +50,12 @@ export async function renderArrowSet(root, setId) {
   const errorBox = document.createElement("div");
   errorBox.className = "form-error";
   wrap.appendChild(errorBox);
+
+  // About the set as a whole -- not any one arrow, which already has its
+  // own Notes column in the grid below. Reuses sets.js's own notes block
+  // verbatim: same arrow_set.notes field the Sets tab's own card edits,
+  // just a second place to reach it from while a build is open.
+  wrap.appendChild(buildNotesBlock(set, (notes) => api.patch(`api/sets/${setId}`, { notes })));
 
   const defaultsSection = buildDefaultsSection(set, catalogues, errorBox, (updated) => {
     renderGrid(updated.arrows);
@@ -245,12 +252,9 @@ function computeDeltaCg(arrow) {
 
 // The whole build's own delta: bare shaft to finished arrow, so finish,
 // fletching, point and nock all together -- as opposed to computeDeltaCg
-// above, which stops at the finish coat alone. Used only by the Weight
-// summary panel's own "Total Δ" row, not a grid column: with two
-// per-arrow deltas already on screen (this one and the grid's own), a
-// third column would invite reading them as three independent
-// measurements rather than the same weight gain seen at two points along
-// the build.
+// above, which stops at the finish coat alone. Shared by its own grid
+// column (below) and the Weight summary panel's "Total Δ" row, so
+// neither can disagree with the other about one arrow's own total gain.
 function computeTotalDeltaCg(arrow) {
   if (arrow.weightCg == null || arrow.finishedWeight == null) return null;
   return cgFromDisplay(arrow.finishedWeight) - arrow.weightCg;
@@ -268,6 +272,7 @@ const GRID_COLUMNS = [
   ["After-finish wt (g)", "col-arw-afterfinish", (a) => numOrNull(a.afterFinishWeight)],
   ["Δ (g)", "col-arw-delta", (a) => computeDeltaCg(a)],
   ["Finished wt (g)", "col-arw-finished", (a) => numOrNull(a.finishedWeight)],
+  ["Total Δ (g)", "col-arw-totaldelta", (a) => computeTotalDeltaCg(a)],
   ["Notes", "col-arw-notes", (a) => a.notes],
 ];
 
@@ -578,7 +583,25 @@ function buildRow(arrow, catalogues, errorBox, onWeightChanged) {
     })
   );
   tr.appendChild(deltaTd);
-  tr.appendChild(textCell("col-arw-finished", arrow.finishedWeight, "finishedWeight", onWeightChanged));
+
+  // Read-only, same shape as deltaTd above: the whole build's own gain
+  // for this one arrow, bare to finished -- finish, fletching, point and
+  // nock all together, not just the finish coat computeDeltaCg covers.
+  const totalDeltaTd = document.createElement("td");
+  totalDeltaTd.className = "col-arw-totaldelta";
+  function refreshTotalDelta() {
+    const delta = computeTotalDeltaCg(arrow);
+    totalDeltaTd.textContent = delta != null ? formatWeightCg(delta) : "";
+  }
+  refreshTotalDelta();
+
+  tr.appendChild(
+    textCell("col-arw-finished", arrow.finishedWeight, "finishedWeight", () => {
+      refreshTotalDelta();
+      onWeightChanged?.();
+    })
+  );
+  tr.appendChild(totalDeltaTd);
 
   const notesTd = document.createElement("td");
   notesTd.className = "col-arw-notes";

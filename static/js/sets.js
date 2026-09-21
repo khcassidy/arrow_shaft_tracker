@@ -316,8 +316,12 @@ function buildSetCard(set, { onDisband, onDelete, onNotesSaved, onMembersChanged
 
 // A set's comment, shown as plain text with an "Edit notes" toggle that
 // swaps in a textarea -- same inline-edit shape as the batch details form
-// in entrygrid.js, just smaller since there's only one field.
-function buildNotesBlock(set, onNotesSaved) {
+// in entrygrid.js, just smaller since there's only one field. Exported:
+// arrowset.js reuses this verbatim for the same arrow_set.notes field,
+// rather than a second textarea wired through commitOnBlur -- which
+// would make Enter commit/blur instead of starting a new line, wrong for
+// a field meant to hold more than one line.
+export function buildNotesBlock(set, onNotesSaved) {
   const wrap = document.createElement("div");
   wrap.className = "sets-card-notes";
 
