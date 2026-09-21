@@ -65,7 +65,14 @@ export async function renderArrowSet(root, setId) {
       gridSection.appendChild(buildStartBuildPrompt(setId, errorBox, (started) => renderGrid(started)));
       return;
     }
-    gridSection.appendChild(buildArrowGrid(arrows, catalogues, errorBox));
+    // The stats panel and the grid's own per-row delta cells both read
+    // the SAME `arrows` array, which commitArrowField keeps live in
+    // place (see its own comment) -- so refreshing stats after a weight
+    // commit is just re-reading numbers that are already current, no
+    // extra fetch needed.
+    const stats = buildStatsSection(arrows);
+    gridSection.appendChild(buildArrowGrid(arrows, catalogues, errorBox, () => stats.refresh(arrows)));
+    gridSection.appendChild(stats.section);
     gridSection.appendChild(buildCancelBuildControl(setId, arrows, errorBox, () => renderGrid([])));
   }
 
@@ -219,6 +226,23 @@ function buildCancelBuildControl(setId, arrows, errorBox, onCancelled) {
 // sorts by [batchNo, seq], never the label string ("19-100" < "19-20" as
 // text) -- the same rule shaftinfo.js's own "#" column follows.
 const numOrNull = (s) => (s == null ? null : Number(s));
+
+// A display string like "312.40" round-trips exactly through *100 -- it's
+// always the server's own format_weight_cg output (2 dp), never raw
+// archer input -- so this is safe where core/units.py's own float-vs-
+// Decimal discipline would not be.
+const cgFromDisplay = (s) => Math.round(Number(s) * 100);
+
+// The one delta this page computes: how much weight the finish added.
+// null unless both readings exist -- one blank operand makes a
+// difference meaningless, not zero. Shared by the per-row cell and its
+// own column's sortValue below, so display and sort order can never
+// disagree about what a row's delta actually is.
+function computeDeltaCg(arrow) {
+  if (arrow.weightCg == null || arrow.afterFinishWeight == null) return null;
+  return cgFromDisplay(arrow.afterFinishWeight) - arrow.weightCg;
+}
+
 const GRID_COLUMNS = [
   ["#", "col-arw-label", (a) => [a.batchNo, a.seq]],
   ["Nock", "col-arw-nock", (a) => a.nockLabel],
@@ -229,6 +253,7 @@ const GRID_COLUMNS = [
   ["Cut length (in)", "col-arw-cutlength", (a) => numOrNull(a.cutLength)],
   ["Bare wt (g)", "col-arw-bareweight", (a) => a.weightCg],
   ["After-finish wt (g)", "col-arw-afterfinish", (a) => numOrNull(a.afterFinishWeight)],
+  ["Δ (g)", "col-arw-delta", (a) => computeDeltaCg(a)],
   ["Finished wt (g)", "col-arw-finished", (a) => numOrNull(a.finishedWeight)],
   ["Notes", "col-arw-notes", (a) => a.notes],
 ];
@@ -258,7 +283,92 @@ function buildColumnRing(naturalOrderArrows) {
   return RING_FIELDS.flatMap((field) => naturalOrderArrows.map((a) => ({ seq: a.id, field })));
 }
 
-function buildArrowGrid(arrows, catalogues, errorBox) {
+// ---- weight summary ----
+// Min/max/average across whichever arrows actually carry that reading --
+// a build is normally read part-way through, so "3 of 12 weighed" is as
+// important to show as the numbers themselves; a silent average over
+// only the measured few, with no count shown, would read as if every
+// arrow had been weighed.
+
+const STATS_ROWS = [
+  ["Bare wt (g)", (a) => a.weightCg],
+  ["After-finish wt (g)", (a) => (a.afterFinishWeight == null ? null : cgFromDisplay(a.afterFinishWeight))],
+  ["Finished wt (g)", (a) => (a.finishedWeight == null ? null : cgFromDisplay(a.finishedWeight))],
+];
+
+function weightStat(arrows, getCg) {
+  const values = arrows.map(getCg).filter((v) => v != null);
+  if (values.length === 0) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const avg = Math.round(values.reduce((sum, v) => sum + v, 0) / values.length);
+  return { count: values.length, min, max, avg };
+}
+
+const STATS_COLUMNS = [
+  ["", "col-stat-label"],
+  ["Measured", "col-stat-n"],
+  ["Min (g)", "col-stat-val"],
+  ["Max (g)", "col-stat-val"],
+  ["Avg (g)", "col-stat-val"],
+];
+
+function buildStatsSection(arrows) {
+  const section = document.createElement("div");
+  section.className = "config-section arrowset-stats-section";
+
+  const h2 = document.createElement("h2");
+  h2.textContent = "Weight summary";
+  section.appendChild(h2);
+
+  const table = document.createElement("table");
+  table.className = "config-list arrowset-stats";
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  for (const [label, cls] of STATS_COLUMNS) {
+    const th = document.createElement("th");
+    th.className = cls;
+    th.textContent = label;
+    headRow.appendChild(th);
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  table.appendChild(tbody);
+  section.appendChild(table);
+
+  function refresh(currentArrows) {
+    tbody.innerHTML = "";
+    for (const [label, getCg] of STATS_ROWS) {
+      const stat = weightStat(currentArrows, getCg);
+      const tr = document.createElement("tr");
+
+      const labelTd = document.createElement("td");
+      labelTd.className = "col-stat-label";
+      labelTd.textContent = label;
+      tr.appendChild(labelTd);
+
+      const nTd = document.createElement("td");
+      nTd.className = "col-stat-n";
+      nTd.textContent = `${stat ? stat.count : 0} / ${currentArrows.length}`;
+      tr.appendChild(nTd);
+
+      for (const value of stat ? [stat.min, stat.max, stat.avg] : [null, null, null]) {
+        const td = document.createElement("td");
+        td.className = "col-stat-val";
+        td.textContent = value != null ? formatWeightCg(value) : "—";
+        tr.appendChild(td);
+      }
+
+      tbody.appendChild(tr);
+    }
+  }
+
+  refresh(arrows);
+  return { section, refresh };
+}
+
+function buildArrowGrid(arrows, catalogues, errorBox, onWeightChanged) {
   const table = document.createElement("table");
   table.className = "config-list arrowset-grid";
 
@@ -287,7 +397,9 @@ function buildArrowGrid(arrows, catalogues, errorBox) {
   // silently revert that edit back to its pre-edit value on screen (the
   // server keeps the real value; only the display would be wrong).
   const rowsByArrowId = new Map();
-  for (const arrow of arrows) rowsByArrowId.set(arrow.id, buildRow(arrow, catalogues, errorBox));
+  for (const arrow of arrows) {
+    rowsByArrowId.set(arrow.id, buildRow(arrow, catalogues, errorBox, onWeightChanged));
+  }
 
   function applySort() {
     for (const arrow of sorter.sortRows(arrows)) {
@@ -345,7 +457,7 @@ async function commitArrowField(arrow, body, errorBox) {
   }
 }
 
-function buildRow(arrow, catalogues, errorBox) {
+function buildRow(arrow, catalogues, errorBox, onWeightChanged) {
   const tr = document.createElement("tr");
 
   const labelTd = document.createElement("td");
@@ -393,7 +505,7 @@ function buildRow(arrow, catalogues, errorBox) {
     catalogueCell("col-arw-finish", catalogues.finishes, arrow.finishProductId, "finishProductId")
   );
 
-  function textCell(cls, value, key) {
+  function textCell(cls, value, key, onCommitted) {
     const td = document.createElement("td");
     td.className = cls;
     const input = document.createElement("input");
@@ -403,7 +515,10 @@ function buildRow(arrow, catalogues, errorBox) {
     input.dataset.seq = String(arrow.id);
     input.dataset.field = key;
     commitOnBlur(input, {
-      onCommit: (v) => commitArrowField(arrow, { [key]: v || null }, errorBox),
+      onCommit: async (v) => {
+        await commitArrowField(arrow, { [key]: v || null }, errorBox);
+        onCommitted?.();
+      },
     });
     td.appendChild(input);
     return td;
@@ -421,8 +536,25 @@ function buildRow(arrow, catalogues, errorBox) {
   bareWeightTd.textContent = arrow.weightCg != null ? formatWeightCg(arrow.weightCg) : "";
   tr.appendChild(bareWeightTd);
 
-  tr.appendChild(textCell("col-arw-afterfinish", arrow.afterFinishWeight, "afterFinishWeight"));
-  tr.appendChild(textCell("col-arw-finished", arrow.finishedWeight, "finishedWeight"));
+  // Also read-only: how much weight the finish added, recomputed (not
+  // just re-read) every time After-finish weight is saved, from the
+  // same computeDeltaCg its own column's sortValue uses.
+  const deltaTd = document.createElement("td");
+  deltaTd.className = "col-arw-delta";
+  function refreshDelta() {
+    const delta = computeDeltaCg(arrow);
+    deltaTd.textContent = delta != null ? formatWeightCg(delta) : "";
+  }
+  refreshDelta();
+
+  tr.appendChild(
+    textCell("col-arw-afterfinish", arrow.afterFinishWeight, "afterFinishWeight", () => {
+      refreshDelta();
+      onWeightChanged?.();
+    })
+  );
+  tr.appendChild(deltaTd);
+  tr.appendChild(textCell("col-arw-finished", arrow.finishedWeight, "finishedWeight", onWeightChanged));
 
   const notesTd = document.createElement("td");
   notesTd.className = "col-arw-notes";

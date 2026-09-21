@@ -907,6 +907,7 @@ fieldset {
 .col-arw-cutlength,
 .col-arw-bareweight,
 .col-arw-afterfinish,
+.col-arw-delta,
 .col-arw-finished { width: calc(10ch + 1.2rem); }
 
 /* th.sortable's own generic rule (app.css, shared by every sortable
@@ -921,6 +922,12 @@ fieldset {
    exists for. */
 .arrowset-grid th.sortable { white-space: normal; }
 .col-arw-notes { width: calc(20ch + 1.2rem); }
+
+/* ---- weight summary ---- */
+.arrowset-stats { width: min-content; }
+.col-stat-label { width: calc(20ch + 1.2rem); }
+.col-stat-n { width: calc(9ch + 1.2rem); }
+.col-stat-val { width: calc(8ch + 1.2rem); }
 
 /* ---- Arrows tab index ---- */
 .arrows-index-table { width: min-content; }
