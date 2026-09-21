@@ -284,29 +284,29 @@ function buildColumnRing(naturalOrderArrows) {
 }
 
 // ---- weight summary ----
-// Min/max/average across whichever arrows actually carry that reading --
-// a build is normally read part-way through, so "3 of 12 weighed" is as
-// important to show as the numbers themselves; a silent average over
-// only the measured few, with no count shown, would read as if every
-// arrow had been weighed.
+// Min/max/delta/average across whichever arrows actually carry that
+// reading -- a build is normally read part-way through, so "3 of 12
+// weighed" is as important to show as the numbers themselves; a silent
+// average over only the measured few, with no count shown, would read
+// as if every arrow had been weighed.
 
 const STATS_ROWS = [
   ["Bare wt (g)", (a) => a.weightCg],
   ["After-finish wt (g)", (a) => (a.afterFinishWeight == null ? null : cgFromDisplay(a.afterFinishWeight))],
   ["Finished wt (g)", (a) => (a.finishedWeight == null ? null : cgFromDisplay(a.finishedWeight))],
-  // Same computeDeltaCg the grid's own Delta column and its sortValue
-  // use -- one function, so the range shown here can never disagree
-  // with what a row's own Delta cell says.
-  ["Δ (g)", (a) => computeDeltaCg(a)],
 ];
 
+// delta here is this row's own spread (max - min) -- how consistent the
+// set's shafts are for that one reading -- not computeDeltaCg's
+// after-finish-minus-bare (that's the grid's own per-arrow Delta column,
+// a different comparison: one arrow against itself, not the set's range).
 function weightStat(arrows, getCg) {
   const values = arrows.map(getCg).filter((v) => v != null);
   if (values.length === 0) return null;
   const min = Math.min(...values);
   const max = Math.max(...values);
   const avg = Math.round(values.reduce((sum, v) => sum + v, 0) / values.length);
-  return { count: values.length, min, max, avg };
+  return { count: values.length, min, max, delta: max - min, avg };
 }
 
 const STATS_COLUMNS = [
@@ -314,6 +314,7 @@ const STATS_COLUMNS = [
   ["Measured", "col-stat-n"],
   ["Min (g)", "col-stat-val"],
   ["Max (g)", "col-stat-val"],
+  ["Delta (g)", "col-stat-val"],
   ["Avg (g)", "col-stat-val"],
 ];
 
@@ -357,7 +358,7 @@ function buildStatsSection(arrows) {
       nTd.textContent = `${stat ? stat.count : 0} / ${currentArrows.length}`;
       tr.appendChild(nTd);
 
-      for (const value of stat ? [stat.min, stat.max, stat.avg] : [null, null, null]) {
+      for (const value of stat ? [stat.min, stat.max, stat.delta, stat.avg] : [null, null, null, null]) {
         const td = document.createElement("td");
         td.className = "col-stat-val";
         td.textContent = value != null ? formatWeightCg(value) : "—";
