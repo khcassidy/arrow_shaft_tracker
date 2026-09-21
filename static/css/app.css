@@ -909,6 +909,13 @@ fieldset {
 .col-arw-finished { width: calc(10ch + 1.2rem); }
 .col-arw-notes { width: calc(20ch + 1.2rem); }
 
+/* ---- Arrows tab index ---- */
+.arrows-index-table { width: min-content; }
+.col-awi-name { width: calc(20ch + 1.2rem); }
+.col-awi-partition { width: calc(22ch + 1.2rem); }
+.col-awi-count { width: calc(8ch + 1.2rem); }
+.col-awi-action { width: calc(14ch + 1.2rem); }
+
 .sets-card-notes-text {
   margin: 0.4rem 0;
   white-space: pre-wrap;

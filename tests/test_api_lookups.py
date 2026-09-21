@@ -97,6 +97,47 @@ def test_create_nock_option_stores_default_weight_in_centigrains(client):
     assert body["unitWeightCgr"] == 800
 
 
+def test_create_nock_option_allows_a_negative_weight(client):
+    r = client.post(
+        "/api/lookups/nock", json={"label": "Self Nock", "weightText": "-0.09", "weightUnit": "g"}
+    )
+    assert r.status_code == 201
+    body = r.json()
+    assert body["weightText"] == "-0.09"
+    assert body["unitWeightCgr"] < 0
+
+
+def test_create_nock_option_rejects_a_zero_weight(client):
+    r = client.post(
+        "/api/lookups/nock", json={"label": "Zero Nock", "weightText": "0", "weightUnit": "g"}
+    )
+    assert r.status_code == 422
+
+
+def test_patch_nock_option_recomputes_a_negative_weight(client):
+    option_id = client.post("/api/lookups/nock", json={"label": "Test Nock"}).json()["id"]
+    r = client.patch(
+        f"/api/lookups/nock/{option_id}", json={"weightText": "-0.09", "weightUnit": "g"}
+    )
+    assert r.status_code == 200
+    assert r.json()["unitWeightCgr"] < 0
+
+
+def test_create_fletching_option_still_rejects_a_negative_weight(client):
+    r = client.post(
+        "/api/lookups/fletching",
+        json={"label": "Bad Fletching", "weightText": "-1", "weightUnit": "g"},
+    )
+    assert r.status_code == 422
+
+
+def test_create_point_option_still_rejects_a_negative_weight(client):
+    r = client.post(
+        "/api/lookups/point", json={"label": "Bad Point", "weightText": "-1", "weightUnit": "gr"}
+    )
+    assert r.status_code == 422
+
+
 def test_patch_nock_option_recomputes_weight_from_new_text(client):
     r = client.post(
         "/api/lookups/nock", json={"label": "Test Nock", "weightText": "8", "weightUnit": "gr"}

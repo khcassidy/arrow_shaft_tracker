@@ -4,6 +4,7 @@
 
 import { renderAnalysis } from "./analysis.js";
 import { renderArrowSet } from "./arrowset.js";
+import { renderArrowsList } from "./arrows.js";
 import { renderBatchList } from "./batches.js";
 import { renderConfig } from "./config.js";
 import { EntryGrid } from "./entrygrid.js";
@@ -20,9 +21,10 @@ function parseRoute() {
     return { view: "batch-detail", batchId: Number(parts[1]), tab: "batches" };
   }
   if (parts.length >= 3 && parts[0] === "sets" && parts[2] === "arrows") {
-    return { view: "arrow-set", setId: Number(parts[1]), tab: "sets" };
+    return { view: "arrow-set", setId: Number(parts[1]), tab: "arrows" };
   }
   if (parts[0] === "sets") return { view: "sets", tab: "sets" };
+  if (parts[0] === "arrows") return { view: "arrows-index", tab: "arrows" };
   if (parts[0] === "analysis") return { view: "analysis", tab: "analysis" };
   if (parts[0] === "config") return { view: "config", tab: "config" };
   return { view: "batches", tab: "batches" };
@@ -54,6 +56,8 @@ async function render() {
       await renderSets(root);
     } else if (route.view === "arrow-set") {
       await renderArrowSet(root, route.setId);
+    } else if (route.view === "arrows-index") {
+      await renderArrowsList(root);
     } else if (route.view === "analysis") {
       await renderAnalysis(root);
     } else if (route.view === "config") {

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from core.units import parse_arrow_weight
+from core.units import parse_arrow_weight, parse_signed_arrow_weight
 
 _TABLES = {
     "diameter": "diameter_option",
@@ -108,11 +108,15 @@ def create_weighted_option(
     """One function for nock, fletching and point: the three catalogues
     are column-for-column identical. weight_text/weight_unit are the
     audit pair the archer actually typed; default_unit_weight_cgr is
-    derived from them here, through core.units.parse_arrow_weight, never
-    computed a second way at any other call site. Both empty means "not
-    catalogued yet" -- a real, valid state, not an error."""
+    derived from them here, never computed a second way at any other
+    call site. Both empty means "not catalogued yet" -- a real, valid
+    state, not an error. nock alone allows a negative weight (a self
+    nock cuts wood away rather than adding a component) via
+    parse_signed_arrow_weight; fletching and point stay through the
+    positive-only parse_arrow_weight."""
     table = _TABLES[kind]
-    unit_weight_cgr = parse_arrow_weight(weight_text, weight_unit) if weight_text else None
+    parse = parse_signed_arrow_weight if kind == "nock" else parse_arrow_weight
+    unit_weight_cgr = parse(weight_text, weight_unit) if weight_text else None
     sort_order = _next_sort_order(conn, table)
     cur = conn.execute(
         f"INSERT INTO {table}"

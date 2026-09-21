@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.schemas import LookupCreateRequest, LookupOrderRequest, LookupPatchRequest
 from app.db import repo_lookups
 from app.deps import get_db
-from core.units import parse_arrow_weight
+from core.units import parse_arrow_weight, parse_signed_arrow_weight
 
 router = APIRouter(prefix="/api/lookups/{kind}", tags=["lookups"])
 
@@ -108,9 +108,12 @@ def patch_lookup(
             text, unit = None, None
         db_fields["default_weight_text"] = text
         db_fields["default_weight_unit"] = unit
-        # UnitError -> 422 via the registered handler; deliberately not
-        # caught here, same as app/api/batches.py's parse_length_in call.
-        db_fields["default_unit_weight_cgr"] = parse_arrow_weight(text, unit) if text else None
+        # nock alone allows a negative weight (a self nock cuts wood away
+        # rather than adding a component); fletching and point stay
+        # positive-only. UnitError -> 422 via the registered handler,
+        # deliberately not caught here, same as batches.py's parse_length_in.
+        parse = parse_signed_arrow_weight if kind == "nock" else parse_arrow_weight
+        db_fields["default_unit_weight_cgr"] = parse(text, unit) if text else None
 
     try:
         repo_lookups.update_option(db, kind, option_id, db_fields)

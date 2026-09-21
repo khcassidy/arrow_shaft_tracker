@@ -1,6 +1,7 @@
-// The Arrow Set page: reached only from a built Set's own "Build arrows" /
-// "Open Arrow Set" link (sets.js), never a standalone top-level tab -- the
-// confirmed flow is Batches > Analysis > Sets > Arrow Set, one path in.
+// The Arrow Set page for one set's build. Reached two ways: the top-level
+// Arrows tab's index (arrows.js) lists every set's build, and a built
+// Set's own card (sets.js) carries the same "Build arrows" / "Open Arrow
+// Set" link -- both land here, at #/sets/{id}/arrows.
 //
 // One flat table, one row per arrow, every field directly editable
 // (commitOnBlur) -- no stage picker, no per-arrow panel, no matrix. The
@@ -37,8 +38,8 @@ export async function renderArrowSet(root, setId) {
   wrap.appendChild(meta);
 
   const backLink = document.createElement("a");
-  backLink.href = "#/sets";
-  backLink.textContent = "← Back to Sets";
+  backLink.href = "#/arrows";
+  backLink.textContent = "← Back to Arrows";
   backLink.className = "arrowset-back-link";
   wrap.appendChild(backLink);
 

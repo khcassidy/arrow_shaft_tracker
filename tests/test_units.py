@@ -12,10 +12,12 @@ from core.units import (
     mean_minor,
     parse_arrow_weight,
     parse_length_in,
+    parse_signed_arrow_weight,
     parse_spine_lb,
     parse_weight,
     parse_weight_g,
     parse_weight_gr,
+    signed_grams_to_weight_cgr,
 )
 
 
@@ -108,6 +110,21 @@ def test_parse_arrow_weight_rejects_unknown_unit():
     with pytest.raises(UnitError) as exc:
         parse_arrow_weight("1", "oz")
     assert exc.value.code == "BAD_UNIT"
+
+
+def test_parse_signed_arrow_weight_allows_negative():
+    assert parse_signed_arrow_weight("-0.09", "g") == signed_grams_to_weight_cgr("-0.09")
+    assert parse_signed_arrow_weight("-9", "gr") == -900
+
+
+def test_parse_signed_arrow_weight_rejects_zero():
+    with pytest.raises(UnitError) as exc:
+        parse_signed_arrow_weight("0", "g")
+    assert exc.value.code == "NOT_POSITIVE"
+
+
+def test_signed_grams_to_weight_cgr_matches_known_conversion():
+    assert signed_grams_to_weight_cgr("-1") == -1543
 
 
 def test_format_spine_cp_round_trips_display():
