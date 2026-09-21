@@ -13,6 +13,8 @@
 
 import { api } from "./api.js";
 import { formatWeightCg } from "./fmt.js";
+import { FocusRing } from "./focusring.js";
+import { attachColumnSort } from "./tablesort.js";
 import { attachHoverTooltip } from "./tooltip.js";
 import { commitOnBlur, commitOnChange, labeledInline, optionEl, optionLabel, pickableOptions } from "./ui.js";
 
@@ -211,19 +213,50 @@ function buildCancelBuildControl(setId, arrows, errorBox, onCancelled) {
 
 // ---- the flat grid ----
 
+// [label, class, sortValue] -- sortValue is omitted for the two columns
+// tablesort.js's attachColumnSort treats as unsortable position markers;
+// every other column is click-to-sort, same as the Batches list. "#"
+// sorts by [batchNo, seq], never the label string ("19-100" < "19-20" as
+// text) -- the same rule shaftinfo.js's own "#" column follows.
+const numOrNull = (s) => (s == null ? null : Number(s));
 const GRID_COLUMNS = [
-  ["#", "col-arw-label"],
-  ["Nock", "col-arw-nock"],
-  ["Fletching", "col-arw-fletching"],
-  ["Cnt", "col-arw-fletchcount"],
-  ["Point", "col-arw-point"],
-  ["Finish", "col-arw-finish"],
-  ["Cut length (in)", "col-arw-cutlength"],
-  ["Bare wt (g)", "col-arw-bareweight"],
-  ["After-finish wt (g)", "col-arw-afterfinish"],
-  ["Finished wt (g)", "col-arw-finished"],
-  ["Notes", "col-arw-notes"],
+  ["#", "col-arw-label", (a) => [a.batchNo, a.seq]],
+  ["Nock", "col-arw-nock", (a) => a.nockLabel],
+  ["Fletching", "col-arw-fletching", (a) => a.fletchingLabel],
+  ["Cnt", "col-arw-fletchcount", (a) => a.fletchCount],
+  ["Point", "col-arw-point", (a) => a.pointLabel],
+  ["Finish", "col-arw-finish", (a) => a.finishLabel],
+  ["Cut length (in)", "col-arw-cutlength", (a) => numOrNull(a.cutLength)],
+  ["Bare wt (g)", "col-arw-bareweight", (a) => a.weightCg],
+  ["After-finish wt (g)", "col-arw-afterfinish", (a) => numOrNull(a.afterFinishWeight)],
+  ["Finished wt (g)", "col-arw-finished", (a) => numOrNull(a.finishedWeight)],
+  ["Notes", "col-arw-notes", (a) => a.notes],
 ];
+
+// The fields Tab/Enter visit, in column order (left to right) -- "#" and
+// Bare wt are read-only, so they're not ring stops. Data entry moves DOWN
+// one column through every arrow before moving on to the next column,
+// the opposite of a plain HTML tab order (which goes across a row first)
+// and the same shape entrygrid.js's own per-field mode uses.
+const RING_FIELDS = [
+  "nockOptionId",
+  "fletchingOptionId",
+  "fletchCount",
+  "pointOptionId",
+  "finishProductId",
+  "cutLength",
+  "afterFinishWeight",
+  "finishedWeight",
+  "notes",
+];
+
+// Built from arrows in their NATURAL (batchNo, seq) order, never the
+// table's current sort order -- so clicking a column header to sort
+// never changes what Enter/Tab does, the same guarantee entrygrid.js's
+// own buildRing() gives against the entry grid's own sort.
+function buildColumnRing(naturalOrderArrows) {
+  return RING_FIELDS.flatMap((field) => naturalOrderArrows.map((a) => ({ seq: a.id, field })));
+}
 
 function buildArrowGrid(arrows, catalogues, errorBox) {
   const table = document.createElement("table");
@@ -231,27 +264,81 @@ function buildArrowGrid(arrows, catalogues, errorBox) {
 
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
+  const headerCells = [];
   for (const [label, cls] of GRID_COLUMNS) {
     const th = document.createElement("th");
     th.className = cls;
     th.textContent = label;
     headRow.appendChild(th);
+    headerCells.push(th);
   }
   thead.appendChild(headRow);
   table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
-  for (const arrow of arrows) tbody.appendChild(buildRow(arrow, catalogues, errorBox));
   table.appendChild(tbody);
 
+  // Sorting REORDERS these existing <tr> elements (tbody.appendChild on
+  // an attached node moves it) rather than rebuilding cells from
+  // scratch, the same reason sets.js's candidate picker does the same
+  // thing: every cell here is a live, already-committed input, and the
+  // `arrows` array captured below is only ever the snapshot this grid
+  // was first built from -- rebuilding from it after an edit would
+  // silently revert that edit back to its pre-edit value on screen (the
+  // server keeps the real value; only the display would be wrong).
+  const rowsByArrowId = new Map();
+  for (const arrow of arrows) rowsByArrowId.set(arrow.id, buildRow(arrow, catalogues, errorBox));
+
+  function applySort() {
+    for (const arrow of sorter.sortRows(arrows)) {
+      tbody.appendChild(rowsByArrowId.get(arrow.id));
+    }
+  }
+
+  const sorter = attachColumnSort(
+    headerCells,
+    GRID_COLUMNS.map(([, , sortValue]) => (sortValue ? { sortValue } : {})),
+    applySort
+  );
+  applySort();
+
   attachHoverTooltip(table, "input[type=text]", (el) => el.value);
+
+  // Enter/Tab move down the current column to the next arrow, wrapping
+  // into the top of the next column once the last row is reached --
+  // Shift+Enter/Shift+Tab reverse. At either end of the ring there is
+  // nowhere left to go, so the field is blurred instead, which still
+  // commits whatever was typed (the same reason entrygrid.js's own last
+  // ring cell needs an explicit commit: it has nothing to advance to, so
+  // it would otherwise never naturally blur).
+  const ring = new FocusRing(table);
+  ring.setRing(buildColumnRing(arrows));
+  table.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" && ev.key !== "Tab") return;
+    const cell = ev.target.closest("[data-seq]");
+    if (!cell) return;
+    ev.preventDefault();
+    const seq = Number(cell.dataset.seq);
+    const field = cell.dataset.field;
+    const moved = ring.advance(seq, field, ev.shiftKey ? -1 : 1);
+    if (!moved) cell.blur();
+  });
+
   return table;
 }
 
-async function commitArrowField(arrowId, body, errorBox) {
+// Merges the server's response back into the row's own `arrow` object --
+// not just the field that was actually sent. A row is built once and its
+// cells' commit handlers, and the sort's own sortValue, all read this
+// same object afterward (see buildArrowGrid's applySort), so it must
+// stay the live source of truth for the row rather than a frozen
+// snapshot from whenever the grid first loaded.
+async function commitArrowField(arrow, body, errorBox) {
   errorBox.textContent = "";
   try {
-    return await api.patch(`api/arrows/${arrowId}`, body);
+    const updated = await api.patch(`api/arrows/${arrow.id}`, body);
+    Object.assign(arrow, updated);
+    return updated;
   } catch (e) {
     errorBox.textContent = e.message || "Could not save";
     throw e;
@@ -270,12 +357,14 @@ function buildRow(arrow, catalogues, errorBox) {
     const td = document.createElement("td");
     td.className = cls;
     const select = document.createElement("select");
+    select.dataset.seq = String(arrow.id);
+    select.dataset.field = key;
     for (const o of pickableOptions(options, currentId)) {
       select.appendChild(optionEl(o.id, optionLabel(o)));
     }
     select.value = String(currentId);
     commitOnChange(select, {
-      onCommit: (value) => commitArrowField(arrow.id, { [key]: Number(value) }, errorBox),
+      onCommit: (value) => commitArrowField(arrow, { [key]: Number(value) }, errorBox),
     });
     td.appendChild(select);
     return td;
@@ -289,10 +378,12 @@ function buildRow(arrow, catalogues, errorBox) {
   const countTd = document.createElement("td");
   countTd.className = "col-arw-fletchcount";
   const countSelect = document.createElement("select");
+  countSelect.dataset.seq = String(arrow.id);
+  countSelect.dataset.field = "fletchCount";
   for (const n of FLETCH_COUNTS) countSelect.appendChild(optionEl(n, String(n)));
   countSelect.value = String(arrow.fletchCount);
   commitOnChange(countSelect, {
-    onCommit: (value) => commitArrowField(arrow.id, { fletchCount: Number(value) }, errorBox),
+    onCommit: (value) => commitArrowField(arrow, { fletchCount: Number(value) }, errorBox),
   });
   countTd.appendChild(countSelect);
   tr.appendChild(countTd);
@@ -309,8 +400,10 @@ function buildRow(arrow, catalogues, errorBox) {
     input.type = "text";
     input.inputMode = "decimal";
     input.value = value ?? "";
+    input.dataset.seq = String(arrow.id);
+    input.dataset.field = key;
     commitOnBlur(input, {
-      onCommit: (v) => commitArrowField(arrow.id, { [key]: v || null }, errorBox),
+      onCommit: (v) => commitArrowField(arrow, { [key]: v || null }, errorBox),
     });
     td.appendChild(input);
     return td;
@@ -336,8 +429,10 @@ function buildRow(arrow, catalogues, errorBox) {
   const notesInput = document.createElement("input");
   notesInput.type = "text";
   notesInput.value = arrow.notes ?? "";
+  notesInput.dataset.seq = String(arrow.id);
+  notesInput.dataset.field = "notes";
   commitOnBlur(notesInput, {
-    onCommit: (v) => commitArrowField(arrow.id, { notes: v || null }, errorBox),
+    onCommit: (v) => commitArrowField(arrow, { notes: v || null }, errorBox),
   });
   notesTd.appendChild(notesInput);
   tr.appendChild(notesTd);

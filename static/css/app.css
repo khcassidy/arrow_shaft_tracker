@@ -908,6 +908,18 @@ fieldset {
 .col-arw-bareweight,
 .col-arw-afterfinish,
 .col-arw-finished { width: calc(10ch + 1.2rem); }
+
+/* th.sortable's own generic rule (app.css, shared by every sortable
+   table) sets white-space: nowrap, which is right for the short,
+   single-word headers every OTHER sortable table in this app has, but
+   this grid's own headers ("After-finish wt (g)") are longer than their
+   deliberately narrow, content-sized columns -- nowrap just pushed the
+   overflow into the next column instead of preventing it. Wrapping is
+   safe to allow back here: the sort arrow itself is a fixed-width
+   ::after box regardless of whether the header text above it wraps, so
+   this doesn't reopen the "arrow shifts the text" problem that rule
+   exists for. */
+.arrowset-grid th.sortable { white-space: normal; }
 .col-arw-notes { width: calc(20ch + 1.2rem); }
 
 /* ---- Arrows tab index ---- */
