@@ -294,6 +294,10 @@ const STATS_ROWS = [
   ["Bare wt (g)", (a) => a.weightCg],
   ["After-finish wt (g)", (a) => (a.afterFinishWeight == null ? null : cgFromDisplay(a.afterFinishWeight))],
   ["Finished wt (g)", (a) => (a.finishedWeight == null ? null : cgFromDisplay(a.finishedWeight))],
+  // Same computeDeltaCg the grid's own Delta column and its sortValue
+  // use -- one function, so the range shown here can never disagree
+  // with what a row's own Delta cell says.
+  ["Δ (g)", (a) => computeDeltaCg(a)],
 ];
 
 function weightStat(arrows, getCg) {
