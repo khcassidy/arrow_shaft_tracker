@@ -243,6 +243,19 @@ function computeDeltaCg(arrow) {
   return cgFromDisplay(arrow.afterFinishWeight) - arrow.weightCg;
 }
 
+// The whole build's own delta: bare shaft to finished arrow, so finish,
+// fletching, point and nock all together -- as opposed to computeDeltaCg
+// above, which stops at the finish coat alone. Used only by the Weight
+// summary panel's own "Total Δ" row, not a grid column: with two
+// per-arrow deltas already on screen (this one and the grid's own), a
+// third column would invite reading them as three independent
+// measurements rather than the same weight gain seen at two points along
+// the build.
+function computeTotalDeltaCg(arrow) {
+  if (arrow.weightCg == null || arrow.finishedWeight == null) return null;
+  return cgFromDisplay(arrow.finishedWeight) - arrow.weightCg;
+}
+
 const GRID_COLUMNS = [
   ["#", "col-arw-label", (a) => [a.batchNo, a.seq]],
   ["Nock", "col-arw-nock", (a) => a.nockLabel],
@@ -294,6 +307,12 @@ const STATS_ROWS = [
   ["Bare wt (g)", (a) => a.weightCg],
   ["After-finish wt (g)", (a) => (a.afterFinishWeight == null ? null : cgFromDisplay(a.afterFinishWeight))],
   ["Finished wt (g)", (a) => (a.finishedWeight == null ? null : cgFromDisplay(a.finishedWeight))],
+  // Bare -> finished, the whole build's own weight gain per arrow (see
+  // computeTotalDeltaCg). This row's own Min/Max/Delta/Avg then say how
+  // much that total gain itself varies across the set -- the same shape
+  // every other row already has, just applied to a derived quantity
+  // instead of a raw reading.
+  ["Total Δ (g)", (a) => computeTotalDeltaCg(a)],
 ];
 
 // delta here is this row's own spread (max - min) -- how consistent the
