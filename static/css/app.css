@@ -905,6 +905,7 @@ fieldset {
 .col-arw-finish { width: calc(20ch + 1.2rem); }
 .col-arw-fletchcount { width: calc(5ch + 1.2rem); }
 .col-arw-cutlength,
+.col-arw-bareweight,
 .col-arw-afterfinish,
 .col-arw-finished { width: calc(10ch + 1.2rem); }
 .col-arw-notes { width: calc(20ch + 1.2rem); }

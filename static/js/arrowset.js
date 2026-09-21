@@ -12,6 +12,7 @@
 // repo_batches.update_batch).
 
 import { api } from "./api.js";
+import { formatWeightCg } from "./fmt.js";
 import { attachHoverTooltip } from "./tooltip.js";
 import { commitOnBlur, commitOnChange, labeledInline, optionEl, optionLabel, pickableOptions } from "./ui.js";
 
@@ -218,6 +219,7 @@ const GRID_COLUMNS = [
   ["Point", "col-arw-point"],
   ["Finish", "col-arw-finish"],
   ["Cut length (in)", "col-arw-cutlength"],
+  ["Bare wt (g)", "col-arw-bareweight"],
   ["After-finish wt (g)", "col-arw-afterfinish"],
   ["Finished wt (g)", "col-arw-finished"],
   ["Notes", "col-arw-notes"],
@@ -315,6 +317,17 @@ function buildRow(arrow, catalogues, errorBox) {
   }
 
   tr.appendChild(textCell("col-arw-cutlength", arrow.cutLength, "cutLength"));
+
+  // Read-only: the shaft's own weight, measured on the Batches entry
+  // grid before this shaft was ever part of an arrow build. Editing it
+  // belongs there, not here -- this column exists so the two measured
+  // weights that follow (after finish, finished) can be read against
+  // it without a second tab open.
+  const bareWeightTd = document.createElement("td");
+  bareWeightTd.className = "col-arw-bareweight";
+  bareWeightTd.textContent = arrow.weightCg != null ? formatWeightCg(arrow.weightCg) : "";
+  tr.appendChild(bareWeightTd);
+
   tr.appendChild(textCell("col-arw-afterfinish", arrow.afterFinishWeight, "afterFinishWeight"));
   tr.appendChild(textCell("col-arw-finished", arrow.finishedWeight, "finishedWeight"));
 
