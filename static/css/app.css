@@ -609,18 +609,25 @@ fieldset {
 
 .config-section {
   margin-bottom: 2.5rem;
-  /* Was 700px, which is narrower than the widest of these lists now that
-     each column is sized to its own content rather than to an even split
-     -- a shaft source row needs room for a label, a url and notes. */
-  max-width: 950px;
+  max-width: 1100px;
 }
 
-/* Content-sized like the other tables. These lists have four different
+/* Content-sized like the other tables. These lists have several different
    shapes (wood has no extra field, diameter has 64ths, a shaft source has
-   url and notes, a spine band has min and max), so position is no key
-   here either -- config.js gives each cell a class. Before this, an even
-   split across six columns left the label input too narrow to show
-   "Dutch Bow Store" without cutting it off. */
+   url and notes, a spine band has min and max, a weighted catalogue has a
+   default weight/unit pair), so position is no key here either --
+   config.js gives each cell a class.
+   width: min-content on the table, NOT min-width on individual columns:
+   an <input> reports no content-based intrinsic width of its own to the
+   table layout algorithm (unlike a plain-text <td>, it doesn't grow with
+   what's typed into it), so a bare min-width column is read as
+   "flexible" and soaks up any leftover width the table computes for
+   itself -- tried, and it stretched every list (even the three-item
+   Diameter table) to fill the whole page. A real fixed width per column
+   is still the only lever that actually sizes an input column, so the
+   floors below are simply wide, not a different mechanism; .config-list
+   input's own text-overflow: ellipsis further down is the safety net
+   once a value is longer than even that. */
 .config-list {
   border-collapse: collapse;
   width: min-content;
@@ -629,13 +636,23 @@ fieldset {
 /* Wide enough for the two reorder buttons side by side. At 6ch they
    wrapped one above the other and doubled the row height. */
 .col-move { width: calc(9ch + 1.2rem); white-space: nowrap; }
-.col-cfg-label { width: calc(18ch + 1.2rem); }
+/* Wide enough for a genuinely long label ("Bohning Classic Small Groove -
+   Bright Yellow", 45 chars) to still fall back on the ellipsis rather
+   than a narrow, chronically-clipped floor most real entries brush up
+   against -- "Field point 100 gr" (19 chars) is a seeded value that must
+   never be cut to "Field point 100 g", which relabels a grain-rated
+   point as a gram weight. */
+.col-cfg-label { width: calc(34ch + 1.2rem); }
 .col-cfg-sixtyFourths,
 .col-cfg-band { width: calc(8ch + 1.2rem); }
-.col-cfg-url { width: calc(24ch + 1.2rem); }
-.col-cfg-notes { width: calc(20ch + 1.2rem); }
-.col-cfg-active { width: calc(4ch + 1.2rem); }
-.col-cfg-save { width: calc(8ch + 1.2rem); }
+.col-cfg-url { width: calc(30ch + 1.2rem); }
+.col-cfg-notes { width: calc(26ch + 1.2rem); }
+.col-cfg-active,
+.col-cfg-flag { width: calc(4ch + 1.2rem); }
+.col-cfg-delete { width: calc(8ch + 1.2rem); }
+.col-cfg-weightText { width: calc(8ch + 1.2rem); }
+.col-cfg-weightUnit { width: calc(4ch + 1.2rem); }
+.col-cfg-brand { width: calc(16ch + 1.2rem); }
 
 .config-list td {
   border: 1px solid var(--border);
@@ -643,7 +660,8 @@ fieldset {
 }
 
 .config-list input[type="text"],
-.config-list input[type="number"] {
+.config-list input[type="number"],
+.config-list select {
   width: 100%;
   border: 1px solid transparent;
   background: transparent;
@@ -652,7 +670,18 @@ fieldset {
   padding: 0.15rem;
 }
 
-.config-list input:focus {
+/* A value that still doesn't fit (a very long URL, past even the wide
+   floors above) gets a visible "..." rather than a silent, unmarked cut
+   mid-word -- the full value is one hover away via the tooltip config.js
+   attaches to this table. Text inputs only: a <select>'s own content
+   here (g/gr/–) is never long enough to need this. */
+.config-list input[type="text"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.config-list input:focus,
+.config-list select:focus {
   outline: 2px solid var(--accent);
   background: var(--row-alt);
 }

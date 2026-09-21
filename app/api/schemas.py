@@ -74,6 +74,9 @@ class LookupCreateRequest(BaseModel):
     sixtyFourths: int | None = None
     url: StrictStr | None = None
     notes: StrictStr | None = None
+    weightText: StrictStr | None = None
+    weightUnit: Literal["g", "gr"] | None = None
+    brand: StrictStr | None = None
 
 
 class LookupPatchRequest(BaseModel):
@@ -82,6 +85,9 @@ class LookupPatchRequest(BaseModel):
     sixtyFourths: int | None = None
     url: StrictStr | None = None
     notes: StrictStr | None = None
+    weightText: StrictStr | None = None
+    weightUnit: Literal["g", "gr"] | None = None
+    brand: StrictStr | None = None
 
 
 class LookupOrderRequest(BaseModel):

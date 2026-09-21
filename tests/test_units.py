@@ -8,11 +8,14 @@ from core.units import (
     format_spine_cp,
     format_weight_cg,
     grains_to_weight_cg,
+    grams_to_weight_cgr,
     mean_minor,
+    parse_arrow_weight,
     parse_length_in,
     parse_spine_lb,
     parse_weight,
     parse_weight_g,
+    parse_weight_gr,
 )
 
 
@@ -84,6 +87,26 @@ def test_parse_weight_dispatches_on_unit():
 def test_parse_weight_rejects_unknown_unit():
     with pytest.raises(UnitError) as exc:
         parse_weight("1", "oz")
+    assert exc.value.code == "BAD_UNIT"
+
+
+def test_parse_weight_gr_two_dp():
+    assert parse_weight_gr("125.50") == 12550
+
+
+def test_grams_to_weight_cgr_matches_known_conversion():
+    # 1 g = 15.4324 gr exactly.
+    assert grams_to_weight_cgr("1") == 1543
+
+
+def test_parse_arrow_weight_dispatches_on_unit():
+    assert parse_arrow_weight("125", "gr") == 12500
+    assert parse_arrow_weight("1", "g") == 1543
+
+
+def test_parse_arrow_weight_rejects_unknown_unit():
+    with pytest.raises(UnitError) as exc:
+        parse_arrow_weight("1", "oz")
     assert exc.value.code == "BAD_UNIT"
 
 

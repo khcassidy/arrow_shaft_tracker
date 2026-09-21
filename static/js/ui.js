@@ -27,6 +27,24 @@ export function optionEl(value, label) {
   return opt;
 }
 
+// Filters a lookup list down to what a <select> should actually offer:
+// every active option, plus whichever one (if any) the record currently
+// holds -- even when that one has since been deactivated. Dropping an
+// inactive option outright would leave select.value with nothing to
+// match once it's set, and the browser silently falls back to the
+// select's first entry; the next unrelated save then rewrites that
+// record's own reference to a completely different option. currentId
+// left undefined (a fresh, not-yet-saved record) filters to active-only.
+export function pickableOptions(options, currentId) {
+  return options.filter((o) => o.isActive !== false || o.id === currentId);
+}
+
+// A picker's own label for one option, marking a kept-but-inactive entry
+// so it doesn't look like an ordinary live choice.
+export function optionLabel(option) {
+  return option.isActive === false ? `${option.label} (inactive)` : option.label;
+}
+
 export function labeledInline(labelText, inputEl) {
   const label = document.createElement("label");
   label.className = "sets-inline-label";
@@ -76,6 +94,36 @@ export function detailsBlock(summaryText, { open = false, onFirstOpen } = {}) {
     });
   }
   return details;
+}
+
+// Commits a text/number/select input's value on blur, and on Enter (which
+// just blurs -- blur is the one place that actually commits, so there is
+// no double-commit to guard against the way entrygrid.js's own focus-ring
+// interaction needs). A no-op if the value hasn't actually changed since
+// the last commit, so tabbing through an untouched field sends nothing.
+// On failure, onCommit's own rejection reverts the input to its last
+// committed value -- the caller is responsible for showing the error
+// (e.g. into its own errorBox) before rejecting.
+export function commitOnBlur(input, { onCommit }) {
+  let lastValue = input.value;
+  async function commit() {
+    if (input.value === lastValue) return;
+    const prevValue = lastValue;
+    lastValue = input.value;
+    try {
+      await onCommit(input.value);
+    } catch {
+      input.value = prevValue;
+      lastValue = prevValue;
+    }
+  }
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      input.blur(); // triggers the blur listener above
+    }
+  });
 }
 
 const STATUS_LEVELS = ["saving", "ok", "warn", "error", "queued"];

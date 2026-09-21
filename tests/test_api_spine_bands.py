@@ -59,3 +59,25 @@ def test_reorder_spine_bands_rewrites_sort_order(client):
     assert r.status_code == 200
     after = [b["id"] for b in r.json()]
     assert after == reversed_ids
+
+
+def test_delete_spine_band_removes_an_unused_band(client):
+    band_id = client.post("/api/spine-bands", json={"minLb": "70", "maxLb": "75"}).json()["id"]
+    r = client.delete(f"/api/spine-bands/{band_id}")
+    assert r.status_code == 200
+    labels = [b["label"] for b in client.get("/api/spine-bands").json()]
+    assert "70-75" not in labels
+
+
+def test_delete_spine_band_404_for_an_unknown_band(client):
+    r = client.delete("/api/spine-bands/999999")
+    assert r.status_code == 404
+
+
+def test_delete_spine_band_refuses_a_band_still_assigned_to_a_batch(client):
+    band_id = client.post("/api/spine-bands", json={"minLb": "70", "maxLb": "75"}).json()["id"]
+    client.post("/api/batches", json={"batchNo": 5002, "expectedCount": 1, "spineBandId": band_id})
+    r = client.delete(f"/api/spine-bands/{band_id}")
+    assert r.status_code == 409
+    labels = [b["label"] for b in client.get("/api/spine-bands").json()]
+    assert "70-75" in labels

@@ -1,13 +1,34 @@
-// Configuration tab: the ordered lookup lists (diameter, wood, shop) and
-// the entry-validation rules. Every list mutation re-renders from the
-// server's response rather than re-fetching, since create/rename/toggle/
-// reorder each already return the current list or row. Analysis
-// parameter sets moved to analysis.js's own "Edit parameters" panel, so
-// they can be tweaked and re-run without leaving that page.
+// Configuration tab: the ordered lookup lists (diameter, wood, shop, and
+// the four arrow-component catalogues), the spine bands, and the entry-
+// validation rules. Every list mutation re-renders from the server's
+// response rather than re-fetching, since create/rename/toggle/reorder/
+// delete each already return the current list or row. Analysis parameter
+// sets moved to analysis.js's own "Edit parameters" panel, so they can be
+// tweaked and re-run without leaving that page.
 
 import { api } from "./api.js";
 import { displayFromMinor, minorFromInput } from "./fmt.js";
-import { field, numberInput } from "./ui.js";
+import { attachHoverTooltip } from "./tooltip.js";
+import { commitOnBlur, field, numberInput, optionEl } from "./ui.js";
+
+// A "select" extraField renders a <select> instead of an <input>, its
+// options given as [{value, label}]. The three weighted catalogues share
+// one field list -- nock, fletching and point are column-for-column
+// identical server-side too, see repo_lookups.py.
+const _WEIGHTED_CATALOGUE_FIELDS = [
+  { key: "weightText", label: "Default weight", type: "text" },
+  {
+    key: "weightUnit",
+    label: "Unit",
+    type: "select",
+    options: [
+      { value: "", label: "–" },
+      { value: "g", label: "g" },
+      { value: "gr", label: "gr" },
+    ],
+  },
+  { key: "notes", label: "Notes", type: "text" },
+];
 
 const LOOKUP_KINDS = {
   diameter: {
@@ -18,6 +39,17 @@ const LOOKUP_KINDS = {
   shop: {
     title: "Shaft Sources",
     extraFields: [
+      { key: "url", label: "URL", type: "text" },
+      { key: "notes", label: "Notes", type: "text" },
+    ],
+  },
+  nock: { title: "Nocks", extraFields: _WEIGHTED_CATALOGUE_FIELDS },
+  fletching: { title: "Fletchings", extraFields: _WEIGHTED_CATALOGUE_FIELDS },
+  point: { title: "Points", extraFields: _WEIGHTED_CATALOGUE_FIELDS },
+  finish: {
+    title: "Finish products",
+    extraFields: [
+      { key: "brand", label: "Brand", type: "text" },
       { key: "url", label: "URL", type: "text" },
       { key: "notes", label: "Notes", type: "text" },
     ],
@@ -49,6 +81,20 @@ export async function renderConfig(root) {
   root.appendChild(wrap);
 }
 
+// A "select" extraField needs an actual <select>; every other type is a
+// plain <input type={type}>. Shared by a lookup's own row and its add
+// form, so the two never build the field two different ways.
+function buildExtraFieldInput(field) {
+  if (field.type === "select") {
+    const select = document.createElement("select");
+    for (const opt of field.options) select.appendChild(optionEl(opt.value, opt.label));
+    return select;
+  }
+  const input = document.createElement("input");
+  input.type = field.type;
+  return input;
+}
+
 // ---- ordered lookup lists ----
 
 async function buildLookupSection(kind) {
@@ -65,6 +111,11 @@ async function buildLookupSection(kind) {
   const tbody = document.createElement("tbody");
   table.appendChild(tbody);
   section.appendChild(table);
+  // A truncated value (see .col-cfg-label etc.'s text-overflow: ellipsis
+  // in app.css) still needs some way to read the rest -- getText reads
+  // the input's live, untruncated .value, same as entrygrid.js's own
+  // notes-field tooltip.
+  attachHoverTooltip(table, "input[type=text]", (el) => el.value);
 
   const errorBox = document.createElement("div");
   errorBox.className = "form-error";
@@ -76,6 +127,20 @@ async function buildLookupSection(kind) {
     visible.forEach((option, index) => {
       tbody.appendChild(buildRow(option, index, visible));
     });
+  }
+
+  // Commits ONE field of one row, nothing else. Server-side PATCH already
+  // treats an omitted key as untouched (exclude_unset), so sending just
+  // {label: ...} here can never revert a value someone else set on
+  // another field from another tab in the meantime.
+  async function commitOneField(optionId, body) {
+    errorBox.textContent = "";
+    try {
+      await api.patch(`api/lookups/${kind}/${optionId}`, body);
+    } catch (e) {
+      errorBox.textContent = e.message || "Could not save";
+      throw e;
+    }
   }
 
   function buildRow(option, index, visible) {
@@ -100,19 +165,26 @@ async function buildLookupSection(kind) {
     const labelInput = document.createElement("input");
     labelInput.type = "text";
     labelInput.value = option.label;
+    commitOnBlur(labelInput, { onCommit: (value) => commitOneField(option.id, { label: value }) });
     const labelTd = document.createElement("td");
     labelTd.className = "col-cfg-label";
     labelTd.appendChild(labelInput);
     tr.appendChild(labelTd);
 
-    const extraInputs = {};
-    for (const field of extraFields) {
-      const input = document.createElement("input");
-      input.type = field.type;
-      input.value = option[field.key] ?? "";
-      extraInputs[field.key] = input;
+    for (const extraField of extraFields) {
+      const input = buildExtraFieldInput(extraField);
+      input.value = option[extraField.key] ?? "";
+      commitOnBlur(input, {
+        onCommit: (value) => {
+          const body = {
+            [extraField.key]:
+              extraField.type === "number" ? (value ? Number(value) : null) : value || null,
+          };
+          return commitOneField(option.id, body);
+        },
+      });
       const td = document.createElement("td");
-      td.className = `col-cfg-${field.key}`;
+      td.className = `col-cfg-${extraField.key}`;
       td.appendChild(input);
       tr.appendChild(td);
     }
@@ -124,35 +196,31 @@ async function buildLookupSection(kind) {
     activeCheckbox.checked = option.isActive;
     activeCheckbox.addEventListener("change", async () => {
       try {
-        await api.patch(`api/lookups/${kind}/${option.id}`, { isActive: activeCheckbox.checked });
-      } catch (e) {
-        errorBox.textContent = e.message || "Could not update";
+        await commitOneField(option.id, { isActive: activeCheckbox.checked });
+      } catch {
         activeCheckbox.checked = !activeCheckbox.checked;
       }
     });
     activeTd.appendChild(activeCheckbox);
     tr.appendChild(activeTd);
 
-    const saveTd = document.createElement("td");
-    saveTd.className = "col-cfg-save";
-    const saveBtn = document.createElement("button");
-    saveBtn.type = "button";
-    saveBtn.textContent = "Save";
-    saveBtn.addEventListener("click", async () => {
+    const deleteTd = document.createElement("td");
+    deleteTd.className = "col-cfg-delete";
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", async () => {
+      if (!confirm(`Delete "${option.label}"? This cannot be undone.`)) return;
       errorBox.textContent = "";
-      const body = { label: labelInput.value };
-      for (const field of extraFields) {
-        const raw = extraInputs[field.key].value;
-        body[field.key] = field.type === "number" ? (raw ? Number(raw) : null) : raw || null;
-      }
       try {
-        await api.patch(`api/lookups/${kind}/${option.id}`, body);
+        await api.del(`api/lookups/${kind}/${option.id}`);
+        renderRows(await api.get(`api/lookups/${kind}`));
       } catch (e) {
-        errorBox.textContent = e.message || "Could not save";
+        errorBox.textContent = e.message || "Could not delete";
       }
     });
-    saveTd.appendChild(saveBtn);
-    tr.appendChild(saveTd);
+    deleteTd.appendChild(deleteBtn);
+    tr.appendChild(deleteTd);
 
     return tr;
   }
@@ -188,9 +256,8 @@ function buildAddForm(kind, extraFields, errorBox, renderRows) {
 
   const extraInputs = {};
   for (const field of extraFields) {
-    const input = document.createElement("input");
-    input.type = field.type;
-    input.placeholder = field.label;
+    const input = buildExtraFieldInput(field);
+    if (field.type !== "select") input.placeholder = field.label;
     extraInputs[field.key] = input;
     form.appendChild(input);
   }
@@ -250,6 +317,16 @@ async function buildSpineBandSection() {
   errorBox.className = "form-error";
   section.appendChild(errorBox);
 
+  async function commitOneField(bandId, body) {
+    errorBox.textContent = "";
+    try {
+      return await api.patch(`api/spine-bands/${bandId}`, body);
+    } catch (e) {
+      errorBox.textContent = e.message || "Could not save";
+      throw e;
+    }
+  }
+
   function renderRows(bands) {
     tbody.innerHTML = "";
     bands.forEach((band, index) => tbody.appendChild(buildRow(band, index, bands)));
@@ -274,10 +351,20 @@ async function buildSpineBandSection() {
     moveTd.appendChild(downBtn);
     tr.appendChild(moveTd);
 
+    // A relabel from either bound comes back on the SAME response --
+    // refreshing just this one row's other input (not a full renderRows)
+    // keeps that bound's own in-progress edit, if any, from being
+    // clobbered by a re-render mid-commit.
     const minInput = document.createElement("input");
     minInput.type = "number";
     minInput.step = "any";
     minInput.value = band.minMlb / 1000;
+    commitOnBlur(minInput, {
+      onCommit: async (value) => {
+        const updated = await commitOneField(band.id, { minLb: value });
+        maxInput.value = updated.maxMlb / 1000;
+      },
+    });
     const minTd = document.createElement("td");
     minTd.className = "col-cfg-band";
     minTd.appendChild(minInput);
@@ -287,6 +374,12 @@ async function buildSpineBandSection() {
     maxInput.type = "number";
     maxInput.step = "any";
     maxInput.value = band.maxMlb / 1000;
+    commitOnBlur(maxInput, {
+      onCommit: async (value) => {
+        const updated = await commitOneField(band.id, { maxLb: value });
+        minInput.value = updated.minMlb / 1000;
+      },
+    });
     const maxTd = document.createElement("td");
     maxTd.className = "col-cfg-band";
     maxTd.appendChild(maxInput);
@@ -299,34 +392,31 @@ async function buildSpineBandSection() {
     activeCheckbox.checked = band.isActive;
     activeCheckbox.addEventListener("change", async () => {
       try {
-        await api.patch(`api/spine-bands/${band.id}`, { isActive: activeCheckbox.checked });
-      } catch (e) {
-        errorBox.textContent = e.message || "Could not update";
+        await commitOneField(band.id, { isActive: activeCheckbox.checked });
+      } catch {
         activeCheckbox.checked = !activeCheckbox.checked;
       }
     });
     activeTd.appendChild(activeCheckbox);
     tr.appendChild(activeTd);
 
-    const saveTd = document.createElement("td");
-    saveTd.className = "col-cfg-save";
-    const saveBtn = document.createElement("button");
-    saveBtn.type = "button";
-    saveBtn.textContent = "Save";
-    saveBtn.addEventListener("click", async () => {
+    const deleteTd = document.createElement("td");
+    deleteTd.className = "col-cfg-delete";
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", async () => {
+      if (!confirm(`Delete the "${band.label}" band?`)) return;
       errorBox.textContent = "";
       try {
-        await api.patch(`api/spine-bands/${band.id}`, {
-          minLb: minInput.value,
-          maxLb: maxInput.value,
-        });
+        await api.del(`api/spine-bands/${band.id}`);
         renderRows(await api.get("api/spine-bands"));
       } catch (e) {
-        errorBox.textContent = e.message || "Could not save";
+        errorBox.textContent = e.message || "Could not delete";
       }
     });
-    saveTd.appendChild(saveBtn);
-    tr.appendChild(saveTd);
+    deleteTd.appendChild(deleteBtn);
+    tr.appendChild(deleteTd);
 
     return tr;
   }

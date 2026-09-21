@@ -64,9 +64,22 @@ def register_error_handlers(app: FastAPI) -> None:
     # unreadable to the entry form that triggered it.
     @app.exception_handler(sqlite3.IntegrityError)
     async def _integrity_error(request: Request, exc: sqlite3.IntegrityError):
-        match = _UNIQUE_CONSTRAINT_RE.search(str(exc))
+        text = str(exc)
+        match = _UNIQUE_CONSTRAINT_RE.search(text)
         if match:
             message = f"a record with this {match.group(1)} already exists"
-        else:
-            message = "that change conflicts with existing data"
-        return JSONResponse(status_code=409, content=_envelope("ALREADY_EXISTS", message))
+            return JSONResponse(status_code=409, content=_envelope("ALREADY_EXISTS", message))
+        if "FOREIGN KEY constraint failed" in text:
+            # SQLite's own FK violation message carries no table or column
+            # name to parse out, unlike UNIQUE above -- this is hit by
+            # deleting a catalogue row or spine band that something else
+            # still references (a shaft or batch), never by application
+            # code, which checks first.
+            return JSONResponse(
+                status_code=409,
+                content=_envelope("IN_USE", "still in use elsewhere and cannot be deleted"),
+            )
+        return JSONResponse(
+            status_code=409,
+            content=_envelope("ALREADY_EXISTS", "that change conflicts with existing data"),
+        )

@@ -117,6 +117,43 @@ def parse_weight(raw: str, unit: str) -> int:
     raise UnitError("BAD_UNIT", f"unknown weight unit {unit!r}")
 
 
+def parse_weight_gr(raw: str) -> int:
+    """Parse a weight in grains to centigrains (1 gr = 100). Raises UnitError.
+
+    Centigrains are the one arrow-component-catalogue weight unit; a
+    shaft's own weight stays centigrams, see parse_weight above. A whole
+    grain value (a field point's "100 gr") needs its own minor unit
+    because grains_to_weight_cg's own gram conversion is lossy -- see its
+    docstring -- and a catalogue value should round-trip exactly."""
+    value = normalize_decimal_string(raw, max_dp=2)
+    cgr = _to_minor(value, CENTI)
+    if cgr <= 0:
+        raise UnitError("NOT_POSITIVE", f"{raw!r} must be a positive weight value")
+    return cgr
+
+
+def grams_to_weight_cgr(raw: str) -> int:
+    """Parse a weight in grams to centigrains -- a catalogue's default
+    weight may still be typed in grams even though the stored unit is
+    grains."""
+    value = normalize_decimal_string(raw, max_dp=2)
+    if value <= 0:
+        raise UnitError("NOT_POSITIVE", f"{raw!r} must be a positive weight value")
+    cgr = int((value * GRAINS_PER_GRAM * CENTI).to_integral_value(rounding=ROUND_HALF_UP))
+    if cgr <= 0:
+        raise UnitError("NOT_POSITIVE", f"{raw!r} must be a positive weight value")
+    return cgr
+
+
+def parse_arrow_weight(raw: str, unit: str) -> int:
+    """Dispatch on the entered unit. Always returns centigrains."""
+    if unit == "gr":
+        return parse_weight_gr(raw)
+    if unit == "g":
+        return grams_to_weight_cgr(raw)
+    raise UnitError("BAD_UNIT", f"unknown weight unit {unit!r}")
+
+
 def weight_cg_to_grains(cg: int) -> Decimal:
     return (Decimal(cg) / CENTI) * GRAINS_PER_GRAM
 
