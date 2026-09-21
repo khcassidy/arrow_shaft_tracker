@@ -859,6 +859,56 @@ fieldset {
   cursor: pointer;
 }
 
+.sets-card-arrow-btn {
+  display: inline-block;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+  padding: 0.3rem 0.8rem;
+  margin-right: 0.5rem;
+  text-decoration: none;
+}
+
+/* ---- Arrow Set page ---- */
+
+.arrowset-back-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+}
+
+.arrowset-defaults-section {
+  max-width: none;
+}
+
+.arrowset-grid-section {
+  max-width: none;
+}
+
+.arrowset-cancel-btn {
+  border: 1px solid var(--error);
+  color: var(--error);
+  background: transparent;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+  margin-top: 1rem;
+}
+
+/* Content-sized, same convention as .config-list -- header and body
+   cells share one class per column so app.css's table-layout: fixed
+   (which keys column widths off the first row only) never collapses a
+   column that only the header, or only the body, happened to class. */
+.arrowset-grid { width: min-content; }
+.col-arw-label { width: calc(8ch + 1.2rem); }
+.col-arw-nock,
+.col-arw-fletching,
+.col-arw-point,
+.col-arw-finish { width: calc(20ch + 1.2rem); }
+.col-arw-fletchcount { width: calc(5ch + 1.2rem); }
+.col-arw-cutlength,
+.col-arw-afterfinish,
+.col-arw-finished { width: calc(10ch + 1.2rem); }
+.col-arw-notes { width: calc(20ch + 1.2rem); }
+
 .sets-card-notes-text {
   margin: 0.4rem 0;
   white-space: pre-wrap;

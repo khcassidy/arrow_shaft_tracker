@@ -17,12 +17,12 @@ def _insert_batch(db, batch_no=19, seq_width=2, expected_count=1):
 
 
 def test_migrate_sets_user_version(db):
-    assert db.execute("PRAGMA user_version").fetchone()[0] == 6
+    assert db.execute("PRAGMA user_version").fetchone()[0] == 7
 
 
 def test_migrate_is_idempotent(db):
-    assert migrate(db) == 6
-    assert migrate(db) == 6
+    assert migrate(db) == 7
+    assert migrate(db) == 7
 
 
 def test_diameter_option_seed_includes_unknown_sentinel(db):

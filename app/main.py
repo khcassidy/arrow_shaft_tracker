@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from app import settings
 from app.api import (
     analysis,
+    arrows,
     batches,
     importexport,
     lookups,
@@ -65,6 +66,7 @@ app.include_router(lookups.router)
 app.include_router(params.router)
 app.include_router(partitions.router)
 app.include_router(sets.router)
+app.include_router(arrows.router)
 app.include_router(analysis.router)
 app.include_router(importexport.router)
 app.include_router(spine_bands.router)

@@ -281,6 +281,14 @@ function buildSetCard(set, { onDisband, onDelete, onNotesSaved, onMembersChanged
     })
   );
 
+  if (!set.disbandedAt && set.memberCount > 0) {
+    const arrowBtn = document.createElement("a");
+    arrowBtn.className = "sets-card-arrow-btn";
+    arrowBtn.href = `#/sets/${set.id}/arrows`;
+    arrowBtn.textContent = set.arrowCount > 0 ? "Open Arrow Set" : "Build arrows";
+    card.appendChild(arrowBtn);
+  }
+
   if (!set.disbandedAt) {
     const disbandBtn = document.createElement("button");
     disbandBtn.type = "button";

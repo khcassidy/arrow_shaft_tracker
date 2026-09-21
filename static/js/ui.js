@@ -126,6 +126,29 @@ export function commitOnBlur(input, { onCommit }) {
   });
 }
 
+// The <select> equivalent of commitOnBlur, triggered by "change" instead
+// of "blur": a <select> has no in-progress typed state to wait out, and
+// calling .blur() from a change handler to route through commitOnBlur is
+// NOT a safe substitute -- blur() is a no-op unless the element already
+// has focus, which a programmatic value change (Playwright's
+// select_option, or any future keyboard-driven picker) does not
+// guarantee the way a real mouse click does. Same revert-on-failure
+// behaviour as commitOnBlur otherwise.
+export function commitOnChange(select, { onCommit }) {
+  let lastValue = select.value;
+  select.addEventListener("change", async () => {
+    if (select.value === lastValue) return;
+    const prevValue = lastValue;
+    lastValue = select.value;
+    try {
+      await onCommit(select.value);
+    } catch {
+      select.value = prevValue;
+      lastValue = prevValue;
+    }
+  });
+}
+
 const STATUS_LEVELS = ["saving", "ok", "warn", "error", "queued"];
 
 export function statusClass(node, level) {
