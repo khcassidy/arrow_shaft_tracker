@@ -74,6 +74,9 @@ class LookupCreateRequest(BaseModel):
     sixtyFourths: int | None = None
     url: StrictStr | None = None
     notes: StrictStr | None = None
+    weightText: StrictStr | None = None
+    weightUnit: Literal["g", "gr"] | None = None
+    brand: StrictStr | None = None
 
 
 class LookupPatchRequest(BaseModel):
@@ -82,6 +85,9 @@ class LookupPatchRequest(BaseModel):
     sixtyFourths: int | None = None
     url: StrictStr | None = None
     notes: StrictStr | None = None
+    weightText: StrictStr | None = None
+    weightUnit: Literal["g", "gr"] | None = None
+    brand: StrictStr | None = None
 
 
 class LookupOrderRequest(BaseModel):
@@ -145,6 +151,32 @@ class SetPatchRequest(BaseModel):
 
 class SetMembersRequest(BaseModel):
     shaftIds: list[int] = Field(min_length=1)
+
+
+class SetDefaultsPatchRequest(BaseModel):
+    """Every field optional and independently omittable (exclude_unset),
+    same discipline as every other PATCH in this app -- editing just the
+    fletch count must not touch the nock default sitting next to it."""
+
+    nockOptionId: int | None = None
+    fletchingOptionId: int | None = None
+    fletchCount: int | None = None
+    pointOptionId: int | None = None
+    finishProductId: int | None = None
+    cutLength: StrictStr | None = None
+
+
+class ArrowPatchRequest(BaseModel):
+    nockOptionId: int | None = None
+    fletchingOptionId: int | None = None
+    fletchCount: int | None = None
+    pointOptionId: int | None = None
+    finishProductId: int | None = None
+    cutLength: StrictStr | None = None
+    afterFinishWeight: StrictStr | None = None
+    afterFletchingWeight: StrictStr | None = None
+    finishedWeight: StrictStr | None = None
+    notes: StrictStr | None = None
 
 
 class ImportCommitRequest(BaseModel):

@@ -12,9 +12,15 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from core.derive import ab_consistent, in_spec
 
-from app.api.schemas import SetCreateRequest, SetMembersRequest, SetPatchRequest
+from app.api.arrows import _row_dict as _arrow_dict
+from app.api.schemas import (
+    SetCreateRequest,
+    SetDefaultsPatchRequest,
+    SetMembersRequest,
+    SetPatchRequest,
+)
 from app.api.shafts import _row_dict as _shaft_dict
-from app.db import repo_params, repo_sets
+from app.db import repo_arrows, repo_params, repo_sets
 from app.deps import get_db
 
 router = APIRouter(prefix="/api/sets", tags=["sets"])
@@ -145,3 +151,50 @@ def remove_set_members(
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return _shape_set(result, db)
+
+
+# ---- the arrow build: one flat grid per set, see app/db/repo_arrows.py ----
+
+
+@router.post("/{set_id}/arrows:start")
+def start_arrow_build(set_id: int, db: sqlite3.Connection = Depends(get_db)):
+    try:
+        rows = repo_arrows.start_build(db, set_id)
+    except KeyError:
+        raise HTTPException(404, f"no such set {set_id}")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return [_arrow_dict(r) for r in rows]
+
+
+@router.get("/{set_id}/arrows")
+def list_set_arrows(set_id: int, db: sqlite3.Connection = Depends(get_db)):
+    if repo_sets.get_set(db, set_id) is None:
+        raise HTTPException(404, f"no such set {set_id}")
+    return [_arrow_dict(r) for r in repo_arrows.list_arrows(db, set_id)]
+
+
+@router.delete("/{set_id}/arrows")
+def cancel_arrow_build(set_id: int, db: sqlite3.Connection = Depends(get_db)):
+    try:
+        repo_arrows.cancel_build(db, set_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"status": "cancelled"}
+
+
+@router.patch("/{set_id}/defaults")
+def patch_set_defaults(
+    set_id: int, body: SetDefaultsPatchRequest, db: sqlite3.Connection = Depends(get_db)
+):
+    fields = body.model_dump(exclude_unset=True)
+    try:
+        # UnitError (a bad cutLength) -> 422 via the registered handler,
+        # deliberately not caught here.
+        repo_arrows.update_defaults(db, set_id, fields)
+        result = repo_sets.get_set(db, set_id)
+    except KeyError:
+        raise HTTPException(404, f"no such set {set_id}")
+    if result is None:
+        raise HTTPException(404, f"no such set {set_id}")
+    return {**_shape_set(result, db), "arrows": [_arrow_dict(r) for r in repo_arrows.list_arrows(db, set_id)]}

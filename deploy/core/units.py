@@ -117,6 +117,78 @@ def parse_weight(raw: str, unit: str) -> int:
     raise UnitError("BAD_UNIT", f"unknown weight unit {unit!r}")
 
 
+def parse_weight_gr(raw: str) -> int:
+    """Parse a weight in grains to centigrains (1 gr = 100). Raises UnitError.
+
+    Centigrains are the one arrow-component-catalogue weight unit; a
+    shaft's own weight stays centigrams, see parse_weight above. A whole
+    grain value (a field point's "100 gr") needs its own minor unit
+    because grains_to_weight_cg's own gram conversion is lossy -- see its
+    docstring -- and a catalogue value should round-trip exactly."""
+    value = normalize_decimal_string(raw, max_dp=2)
+    cgr = _to_minor(value, CENTI)
+    if cgr <= 0:
+        raise UnitError("NOT_POSITIVE", f"{raw!r} must be a positive weight value")
+    return cgr
+
+
+def grams_to_weight_cgr(raw: str) -> int:
+    """Parse a weight in grams to centigrains -- a catalogue's default
+    weight may still be typed in grams even though the stored unit is
+    grains."""
+    value = normalize_decimal_string(raw, max_dp=2)
+    if value <= 0:
+        raise UnitError("NOT_POSITIVE", f"{raw!r} must be a positive weight value")
+    cgr = int((value * GRAINS_PER_GRAM * CENTI).to_integral_value(rounding=ROUND_HALF_UP))
+    if cgr <= 0:
+        raise UnitError("NOT_POSITIVE", f"{raw!r} must be a positive weight value")
+    return cgr
+
+
+def parse_arrow_weight(raw: str, unit: str) -> int:
+    """Dispatch on the entered unit. Always returns centigrains."""
+    if unit == "gr":
+        return parse_weight_gr(raw)
+    if unit == "g":
+        return grams_to_weight_cgr(raw)
+    raise UnitError("BAD_UNIT", f"unknown weight unit {unit!r}")
+
+
+def parse_signed_weight_gr(raw: str) -> int:
+    """Parse a signed weight in grains to centigrains. Unlike every other
+    weight parser in this module, negative is valid here (zero is still
+    refused) -- a self-nocked shaft has wood cut away, not a component
+    added, so a nock catalogue entry's weight is the one place a real
+    removal of mass needs to be typeable, not just a component whose
+    mass happens to be small."""
+    value = normalize_decimal_string(raw, max_dp=2)
+    cgr = _to_minor(value, CENTI)
+    if cgr == 0:
+        raise UnitError("NOT_POSITIVE", f"{raw!r} must not be zero")
+    return cgr
+
+
+def signed_grams_to_weight_cgr(raw: str) -> int:
+    """Parse a signed weight in grams to centigrains."""
+    value = normalize_decimal_string(raw, max_dp=2)
+    if value == 0:
+        raise UnitError("NOT_POSITIVE", f"{raw!r} must not be zero")
+    return int((value * GRAINS_PER_GRAM * CENTI).to_integral_value(rounding=ROUND_HALF_UP))
+
+
+def parse_signed_arrow_weight(raw: str, unit: str) -> int:
+    """Dispatch on the entered unit, allowing negative -- used only for
+    nock_option's own default weight (repo_lookups.create_weighted_option/
+    update_option), since a nock is the one component catalogue where a
+    cut-away self nock is a meaningful, negative-mass entry. Fletching
+    and point stay through parse_arrow_weight, its positive-only sibling."""
+    if unit == "gr":
+        return parse_signed_weight_gr(raw)
+    if unit == "g":
+        return signed_grams_to_weight_cgr(raw)
+    raise UnitError("BAD_UNIT", f"unknown weight unit {unit!r}")
+
+
 def weight_cg_to_grains(cg: int) -> Decimal:
     return (Decimal(cg) / CENTI) * GRAINS_PER_GRAM
 

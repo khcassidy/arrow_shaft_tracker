@@ -36,6 +36,15 @@ def set_active(conn: sqlite3.Connection, band_id: int, is_active: bool) -> None:
     conn.commit()
 
 
+def delete_band(conn: sqlite3.Connection, band_id: int) -> None:
+    """A band still assigned to a batch fails the schema's own FOREIGN
+    KEY constraint (batch.spine_band_id) and surfaces as a 409."""
+    if get_band(conn, band_id) is None:
+        raise KeyError(band_id)
+    conn.execute("DELETE FROM spine_band WHERE id = ?", (band_id,))
+    conn.commit()
+
+
 def _label_for(min_mlb: int, max_mlb: int) -> str:
     def fmt(mlb: int) -> str:
         lb = mlb / 1000

@@ -30,6 +30,19 @@ export function formatLengthIn(cIn) {
   return formatMinor(cIn, 2);
 }
 
+// The typed-input/display-value counterpart to formatMinor above: a form
+// field showing a minor-unit value reads and writes it through these two,
+// instead of a hand-written Math.round(Number(x.value) * scale) at every
+// call site. Same non-authoritative status as the rest of this file --
+// the server re-parses the raw typed text through Decimal on commit.
+export function minorFromInput(text, decimals) {
+  return Math.round(Number(text) * 10 ** decimals);
+}
+
+export function displayFromMinor(value, decimals) {
+  return value / 10 ** decimals;
+}
+
 export function formatQuality(value) {
   if (!value) return "–";
   return value.charAt(0) + value.slice(1).toLowerCase();
@@ -83,4 +96,24 @@ export function convertWeightLive(rawText, unit) {
   if (!isFinite(value)) return "";
   const result = unit === "g" ? value * GRAINS_PER_GRAM : value / GRAINS_PER_GRAM;
   return result.toFixed(2);
+}
+
+// Grains per inch: weight(gr) / length(in) -- a shaft's mass distribution
+// along its length, independent of spine. Same advisory status as every
+// other conversion in this file: a shaft carries no gpi column of its own,
+// this is computed fresh from weightCg and effectiveLengthCIn (never the
+// shaft's own possibly-null length_c_in override -- gpi needs the shaft's
+// real physical length, inherited from the batch default or not) every
+// time either one changes, and never sent back to the server. null unless
+// both operands are present and length is nonzero.
+export function computeGpi(weightCg, lengthCIn) {
+  if (weightCg == null || !lengthCIn) return null;
+  const grains = (weightCg / 100) * GRAINS_PER_GRAM;
+  const inches = lengthCIn / 100;
+  return grains / inches;
+}
+
+export function formatGpi(weightCg, lengthCIn) {
+  const gpi = computeGpi(weightCg, lengthCIn);
+  return gpi != null ? gpi.toFixed(2) : "";
 }

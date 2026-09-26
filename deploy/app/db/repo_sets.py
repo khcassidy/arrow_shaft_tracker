@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import sqlite3
 
+from core.units import format_length_in
+
 
 class SetMembersConsumedError(Exception):
     """Raised when one or more requested shafts were already consumed into
@@ -23,6 +25,10 @@ class SetMembersConsumedError(Exception):
 
 
 def _set_row_dict(row: sqlite3.Row) -> dict:
+    """Takes a row from _SET_LIST_SQL specifically (its `a.*` carries the
+    build-defaults header, see repo_arrows.py, alongside the joined
+    diameter/wood labels and member count) -- never a bare `SELECT * FROM
+    arrow_set` row, which lacks those joined columns."""
     return {
         "id": row["id"],
         "name": row["name"],
@@ -32,15 +38,27 @@ def _set_row_dict(row: sqlite3.Row) -> dict:
         "woodId": row["wood_id"],
         "woodLabel": row["wood_label"],
         "memberCount": row["member_count"],
+        "arrowCount": row["arrow_count"],
         "notes": row["notes"],
         "createdAt": row["created_at"],
         "disbandedAt": row["disbanded_at"],
+        "defaultNockOptionId": row["default_nock_option_id"],
+        "defaultFletchingOptionId": row["default_fletching_option_id"],
+        "defaultFletchCount": row["default_fletch_count"],
+        "defaultPointOptionId": row["default_point_option_id"],
+        "defaultFinishProductId": row["default_finish_product_id"],
+        "defaultCutLength": (
+            format_length_in(row["default_cut_length_c_in"])
+            if row["default_cut_length_c_in"] is not None
+            else None
+        ),
     }
 
 
 _SET_LIST_SQL = """
   SELECT a.*, d.label AS diameter_label, w.label AS wood_label,
-         (SELECT COUNT(*) FROM shaft WHERE consumed_set_id = a.id) AS member_count
+         (SELECT COUNT(*) FROM shaft WHERE consumed_set_id = a.id) AS member_count,
+         (SELECT COUNT(*) FROM arrow WHERE set_id = a.id) AS arrow_count
   FROM arrow_set a
   JOIN diameter_option d ON d.id = a.diameter_id
   JOIN wood_option w ON w.id = a.wood_id

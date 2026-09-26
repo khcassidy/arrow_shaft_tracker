@@ -6,16 +6,10 @@ import { api } from "./api.js";
 import { formatLengthIn } from "./fmt.js";
 import { buildExportLinks, buildImportForm } from "./importexport.js";
 import { attachColumnSort } from "./tablesort.js";
+import { field, optionEl } from "./ui.js";
 
 export async function loadLookup(kind) {
   return api.get(`api/lookups/${kind}`);
-}
-
-export function optionEl(value, label) {
-  const opt = document.createElement("option");
-  opt.value = String(value);
-  opt.textContent = label;
-  return opt;
 }
 
 export async function loadSpineBands() {
@@ -48,7 +42,7 @@ export async function renderBatchList(root) {
   wrap.appendChild(heading);
 
   wrap.appendChild(buildBatchTable(batches, diameters, woods, shops, spineBands));
-  wrap.appendChild(buildCreateForm());
+  wrap.appendChild(buildCreateForm(diameters, woods));
   wrap.appendChild(buildExportLinks());
   wrap.appendChild(buildImportForm());
 
@@ -134,7 +128,7 @@ function buildBatchTable(batches, diameters, woods, shops, spineBands) {
   return table;
 }
 
-function buildCreateForm() {
+function buildCreateForm(diameters, woods) {
   const form = document.createElement("form");
   form.className = "batch-create-form";
 
@@ -145,28 +139,30 @@ function buildCreateForm() {
   const hint = document.createElement("p");
   hint.className = "form-hint";
   hint.textContent =
-    "Spine range, diameter, wood, shaft source, purchase date, and comments are " +
-    "set on the batch's own page after it's created.";
+    "Set diameter and wood now: each shaft is created with these values, and " +
+    "editing them later on the batch's own page changes the batch record only, " +
+    "not its existing shafts. Spine range, shaft source, purchase date, and " +
+    "comments are set on the batch's own page after it's created.";
   form.appendChild(hint);
-
-  function field(labelText, inputEl) {
-    const label = document.createElement("label");
-    label.appendChild(document.createTextNode(labelText));
-    label.appendChild(inputEl);
-    form.appendChild(label);
-    return inputEl;
-  }
 
   const batchNo = document.createElement("input");
   batchNo.type = "number";
   batchNo.required = true;
-  field("Batch #", batchNo);
+  field(form, "Batch #", batchNo);
 
   const expectedCount = document.createElement("input");
   expectedCount.type = "number";
   expectedCount.min = "1";
   expectedCount.required = true;
-  field("Number of shafts", expectedCount);
+  field(form, "Number of shafts", expectedCount);
+
+  const diameterSelect = document.createElement("select");
+  for (const d of diameters) diameterSelect.appendChild(optionEl(d.id, d.label));
+  field(form, "Diameter", diameterSelect);
+
+  const woodSelect = document.createElement("select");
+  for (const w of woods) woodSelect.appendChild(optionEl(w.id, w.label));
+  field(form, "Wood sort", woodSelect);
 
   const submit = document.createElement("button");
   submit.type = "submit";
@@ -184,6 +180,8 @@ function buildCreateForm() {
       const batch = await api.post("api/batches", {
         batchNo: Number(batchNo.value),
         expectedCount: Number(expectedCount.value),
+        diameterId: Number(diameterSelect.value),
+        woodId: Number(woodSelect.value),
       });
       location.hash = `#/batches/${batch.id}`;
     } catch (e) {

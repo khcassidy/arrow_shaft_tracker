@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from app.api.schemas import ImportCommitRequest
-from app.db import repo_batches, repo_export, repo_import
+from app.db import repo_batches, repo_export, repo_import, repo_sets
 from app.deps import get_db
 from app.io import csv_io, json_io
 
@@ -55,6 +55,19 @@ def export_batch_csv(batch_id: int, db: sqlite3.Connection = Depends(get_db)):
     )
 
 
+@router.get("/sets/{set_id}/arrows/export/csv")
+def export_arrows_csv(set_id: int, db: sqlite3.Connection = Depends(get_db)):
+    if repo_sets.get_set(db, set_id) is None:
+        raise HTTPException(404, f"no such set {set_id}")
+    rows = csv_io.from_arrow_export_rows(repo_export.export_arrow_rows(db, set_id))
+    body = csv_io.write_csv(rows, csv_io.ARROW_EXPORT_FIELDNAMES)
+    return Response(
+        content=body,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=arrow-set-{set_id}.csv"},
+    )
+
+
 @router.post("/import/preview")
 def import_preview(
     file: UploadFile = File(...),
@@ -65,17 +78,21 @@ def import_preview(
     # synchronously -- every endpoint here is `def`, never `async def`,
     # since sqlite3 blocks and a sync def runs in Starlette's threadpool.
     raw = file.file.read().decode("utf-8-sig")
-    lookup_defs = band_defs = None
+    lookup_defs = band_defs = param_set_defs = staged_sets = None
     if format == "csv":
         staged_rows = csv_io.to_staged_rows(csv_io.read_csv_rows(raw))
     elif format == "json":
-        # A JSON backup carries its own diameter/wood/shop/band lists. They
-        # are passed through so a label the target database lacks is created
-        # WITH its attributes, not as a bare label -- see repo_import.py.
+        # A JSON backup carries its own diameter/wood/shop/catalogue/band
+        # lists. They are passed through so a label the target database
+        # lacks is created WITH its attributes, not as a bare label -- see
+        # repo_import.py. paramSets and sets are JSON-only too: a CSV row
+        # cannot express a parameter set or a Set spanning batches.
         data = json.loads(raw)
         staged_rows = json_io.to_staged_rows(data)
-        lookup_defs = json_io.lookup_definitions(data)
+        lookup_defs = {**json_io.lookup_definitions(data), **json_io.catalogue_definitions(data)}
         band_defs = json_io.band_definitions(data)
+        param_set_defs = json_io.param_set_definitions(data)
+        staged_sets = json_io.to_staged_sets(data)
     else:
         raise HTTPException(400, f"unknown import format {format!r}")
 
@@ -86,6 +103,8 @@ def import_preview(
         format,
         lookup_defs=lookup_defs,
         band_defs=band_defs,
+        param_set_defs=param_set_defs,
+        staged_sets=staged_sets,
     )
 
 

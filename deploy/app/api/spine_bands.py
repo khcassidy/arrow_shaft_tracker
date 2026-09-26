@@ -64,3 +64,12 @@ def patch_spine_band(
 def reorder_spine_bands(body: SpineBandOrderRequest, db: sqlite3.Connection = Depends(get_db)):
     repo_spine_bands.reorder_bands(db, body.ids)
     return [_row_dict(r) for r in repo_spine_bands.list_bands(db)]
+
+
+@router.delete("/{band_id}")
+def delete_spine_band(band_id: int, db: sqlite3.Connection = Depends(get_db)):
+    try:
+        repo_spine_bands.delete_band(db, band_id)
+    except KeyError:
+        raise HTTPException(404, f"no such spine band {band_id}")
+    return {"status": "deleted"}

@@ -49,6 +49,25 @@ header.top-nav {
 
 header.top-nav .brand {
   font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Capped at the title's own line height, so the logo never makes the
+   header taller than the text beside it. */
+header.top-nav .brand-logo {
+  height: 1.2em;
+  width: auto;
+  /* logo.png is a white line drawing on a transparent background --
+     invisible on the light theme, so invert it to dark there. */
+  filter: invert(1);
+}
+
+@media (prefers-color-scheme: dark) {
+  header.top-nav .brand-logo {
+    filter: none;
+  }
 }
 
 header.top-nav nav a {
@@ -160,6 +179,7 @@ td {
 .col-weight-g { width: calc(11ch + 1.2rem); }
 .col-weight-gr,
 .col-length { width: calc(12ch + 1.2rem); }
+.col-gpi { width: calc(7ch + 1.2rem); }
 .col-quality { width: calc(8ch + 1.2rem); }
 .col-ab-ok { width: calc(7ch + 1.2rem); }
 .col-in-spec { width: calc(8ch + 1.2rem); }
@@ -260,7 +280,7 @@ th.sorted-desc::after {
    "content-sized columns" comment there for how a width is arrived at.
    One table with one fixed column order, so nth-child is a safe key here.
    Order: #, Spine A, Spine B, Avg, A-B, Weight (g), Weight (gr),
-   Length (in), Quality, Notes, Actions.
+   Length (in), GPI, Quality, Notes, Actions.
 
    The earlier version of this rule sized only columns 1, 5 and 10 and was
    written when the grid had 10 columns. Adding Length (in) pushed Actions
@@ -291,11 +311,13 @@ th.sorted-desc::after {
 .entry-grid th:nth-child(8),
 .entry-grid td:nth-child(8) { width: calc(12ch + 1.2rem); }
 .entry-grid th:nth-child(9),
-.entry-grid td:nth-child(9) { width: calc(10ch + 1.2rem); }
+.entry-grid td:nth-child(9) { width: calc(7ch + 1.2rem); }
 .entry-grid th:nth-child(10),
-.entry-grid td:nth-child(10) { width: calc(14ch + 1.2rem); }
+.entry-grid td:nth-child(10) { width: calc(10ch + 1.2rem); }
 .entry-grid th:nth-child(11),
-.entry-grid td:nth-child(11) { width: calc(8ch + 1.2rem); }
+.entry-grid td:nth-child(11) { width: calc(14ch + 1.2rem); }
+.entry-grid th:nth-child(12),
+.entry-grid td:nth-child(12) { width: calc(8ch + 1.2rem); }
 
 .entry-grid .shaft-label {
   font-weight: bold;
@@ -609,18 +631,25 @@ fieldset {
 
 .config-section {
   margin-bottom: 2.5rem;
-  /* Was 700px, which is narrower than the widest of these lists now that
-     each column is sized to its own content rather than to an even split
-     -- a shaft source row needs room for a label, a url and notes. */
-  max-width: 950px;
+  max-width: 1100px;
 }
 
-/* Content-sized like the other tables. These lists have four different
+/* Content-sized like the other tables. These lists have several different
    shapes (wood has no extra field, diameter has 64ths, a shaft source has
-   url and notes, a spine band has min and max), so position is no key
-   here either -- config.js gives each cell a class. Before this, an even
-   split across six columns left the label input too narrow to show
-   "Dutch Bow Store" without cutting it off. */
+   url and notes, a spine band has min and max, a weighted catalogue has a
+   default weight/unit pair), so position is no key here either --
+   config.js gives each cell a class.
+   width: min-content on the table, NOT min-width on individual columns:
+   an <input> reports no content-based intrinsic width of its own to the
+   table layout algorithm (unlike a plain-text <td>, it doesn't grow with
+   what's typed into it), so a bare min-width column is read as
+   "flexible" and soaks up any leftover width the table computes for
+   itself -- tried, and it stretched every list (even the three-item
+   Diameter table) to fill the whole page. A real fixed width per column
+   is still the only lever that actually sizes an input column, so the
+   floors below are simply wide, not a different mechanism; .config-list
+   input's own text-overflow: ellipsis further down is the safety net
+   once a value is longer than even that. */
 .config-list {
   border-collapse: collapse;
   width: min-content;
@@ -629,13 +658,23 @@ fieldset {
 /* Wide enough for the two reorder buttons side by side. At 6ch they
    wrapped one above the other and doubled the row height. */
 .col-move { width: calc(9ch + 1.2rem); white-space: nowrap; }
-.col-cfg-label { width: calc(18ch + 1.2rem); }
+/* Wide enough for a genuinely long label ("Bohning Classic Small Groove -
+   Bright Yellow", 45 chars) to still fall back on the ellipsis rather
+   than a narrow, chronically-clipped floor most real entries brush up
+   against -- "Field point 100 gr" (19 chars) is a seeded value that must
+   never be cut to "Field point 100 g", which relabels a grain-rated
+   point as a gram weight. */
+.col-cfg-label { width: calc(34ch + 1.2rem); }
 .col-cfg-sixtyFourths,
 .col-cfg-band { width: calc(8ch + 1.2rem); }
-.col-cfg-url { width: calc(24ch + 1.2rem); }
-.col-cfg-notes { width: calc(20ch + 1.2rem); }
-.col-cfg-active { width: calc(4ch + 1.2rem); }
-.col-cfg-save { width: calc(8ch + 1.2rem); }
+.col-cfg-url { width: calc(30ch + 1.2rem); }
+.col-cfg-notes { width: calc(26ch + 1.2rem); }
+.col-cfg-active,
+.col-cfg-flag { width: calc(4ch + 1.2rem); }
+.col-cfg-delete { width: calc(8ch + 1.2rem); }
+.col-cfg-weightText { width: calc(8ch + 1.2rem); }
+.col-cfg-weightUnit { width: calc(4ch + 1.2rem); }
+.col-cfg-brand { width: calc(16ch + 1.2rem); }
 
 .config-list td {
   border: 1px solid var(--border);
@@ -643,7 +682,8 @@ fieldset {
 }
 
 .config-list input[type="text"],
-.config-list input[type="number"] {
+.config-list input[type="number"],
+.config-list select {
   width: 100%;
   border: 1px solid transparent;
   background: transparent;
@@ -652,7 +692,18 @@ fieldset {
   padding: 0.15rem;
 }
 
-.config-list input:focus {
+/* A value that still doesn't fit (a very long URL, past even the wide
+   floors above) gets a visible "..." rather than a silent, unmarked cut
+   mid-word -- the full value is one hover away via the tooltip config.js
+   attaches to this table. Text inputs only: a <select>'s own content
+   here (g/gr/–) is never long enough to need this. */
+.config-list input[type="text"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.config-list input:focus,
+.config-list select:focus {
   outline: 2px solid var(--accent);
   background: var(--row-alt);
 }
@@ -829,6 +880,95 @@ fieldset {
   padding: 0.3rem 0.8rem;
   cursor: pointer;
 }
+
+.sets-card-arrow-btn {
+  display: inline-block;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+  padding: 0.3rem 0.8rem;
+  margin-right: 0.5rem;
+  text-decoration: none;
+}
+
+/* ---- Arrow Set page ---- */
+
+.arrowset-back-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+}
+
+.arrowset-export-row {
+  margin-bottom: 1rem;
+}
+
+.arrowset-defaults-section {
+  max-width: none;
+}
+
+.arrowset-grid-section {
+  max-width: none;
+}
+
+.arrowset-cancel-btn {
+  border: 1px solid var(--error);
+  color: var(--error);
+  background: transparent;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+  margin-top: 1rem;
+}
+
+.arrowset-unit-toggle {
+  display: block;
+  margin-bottom: 0.6rem;
+}
+
+/* Content-sized, same convention as .config-list -- header and body
+   cells share one class per column so app.css's table-layout: fixed
+   (which keys column widths off the first row only) never collapses a
+   column that only the header, or only the body, happened to class. */
+.arrowset-grid { width: min-content; }
+.col-arw-label { width: calc(8ch + 1.2rem); }
+.col-arw-nock,
+.col-arw-fletching,
+.col-arw-point,
+.col-arw-finish { width: calc(20ch + 1.2rem); }
+.col-arw-fletchcount { width: calc(5ch + 1.2rem); }
+.col-arw-cutlength,
+.col-arw-bareweight,
+.col-arw-afterfinish,
+.col-arw-delta,
+.col-arw-afterfletching,
+.col-arw-fletchingdelta,
+.col-arw-finished,
+.col-arw-totaldelta { width: calc(10ch + 1.2rem); }
+
+/* th.sortable's own generic rule (app.css, shared by every sortable
+   table) sets white-space: nowrap, which is right for the short,
+   single-word headers every OTHER sortable table in this app has, but
+   this grid's own headers ("After-finish wt (g)") are longer than their
+   deliberately narrow, content-sized columns -- nowrap just pushed the
+   overflow into the next column instead of preventing it. Wrapping is
+   safe to allow back here: the sort arrow itself is a fixed-width
+   ::after box regardless of whether the header text above it wraps, so
+   this doesn't reopen the "arrow shifts the text" problem that rule
+   exists for. */
+.arrowset-grid th.sortable { white-space: normal; }
+.col-arw-notes { width: calc(20ch + 1.2rem); }
+
+/* ---- weight summary ---- */
+.arrowset-stats { width: min-content; }
+.col-stat-label { width: calc(20ch + 1.2rem); }
+.col-stat-n { width: calc(9ch + 1.2rem); }
+.col-stat-val { width: calc(8ch + 1.2rem); }
+
+/* ---- Arrows tab index ---- */
+.arrows-index-table { width: min-content; }
+.col-awi-name { width: calc(20ch + 1.2rem); }
+.col-awi-partition { width: calc(22ch + 1.2rem); }
+.col-awi-count { width: calc(8ch + 1.2rem); }
+.col-awi-action { width: calc(14ch + 1.2rem); }
 
 .sets-card-notes-text {
   margin: 0.4rem 0;

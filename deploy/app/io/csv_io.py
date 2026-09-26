@@ -168,13 +168,63 @@ def to_staged_rows(rows: list[dict]) -> list[dict]:
     return staged
 
 
-def write_csv(rows: list[dict]) -> str:
-    """Writes rows (dicts keyed by EXPORT_FIELDNAMES) to CSV text: a UTF-8
-    BOM (so Excel opens it as UTF-8 rather than guessing) and CRLF line
+ARROW_EXPORT_FIELDNAMES = [
+    "Label",
+    "Nock",
+    "Fletching",
+    "FletchCount",
+    "Point",
+    "Finish",
+    "CutLength",
+    "BareWeightG",
+    "AfterFinishWeightG",
+    "DeltaG",
+    "AfterFletchingWeightG",
+    "FletchingDeltaG",
+    "FinishedWeightG",
+    "TotalDeltaG",
+    "Notes",
+]
+
+
+def from_arrow_export_rows(db_rows: list[dict]) -> list[dict]:
+    """Converts repo_export.export_arrow_rows() dicts into
+    ARROW_EXPORT_FIELDNAMES-shaped rows for write_csv(). One-way: unlike
+    the shaft export above, there is no matching arrow import -- a set's
+    membership and per-arrow build state come from the JSON backup format
+    instead (app/io/json_io.py), which carries the batchNo/seq a CSV row
+    alone can't reconstruct a shaft from."""
+    out = []
+    for r in db_rows:
+        out.append(
+            {
+                "Label": r["shaft_label"],
+                "Nock": r["nock_label"],
+                "Fletching": r["fletching_label"],
+                "FletchCount": r["fletch_count"],
+                "Point": r["point_label"],
+                "Finish": r["finish_label"],
+                "CutLength": r["cut_length_text"],
+                "BareWeightG": r["bare_weight_text"],
+                "AfterFinishWeightG": r["after_finish_weight_text"],
+                "DeltaG": r["delta_text"],
+                "AfterFletchingWeightG": r["after_fletching_weight_text"],
+                "FletchingDeltaG": r["fletching_delta_text"],
+                "FinishedWeightG": r["finished_weight_text"],
+                "TotalDeltaG": r["total_delta_text"],
+                "Notes": r["notes"],
+            }
+        )
+    return out
+
+
+def write_csv(rows: list[dict], fieldnames: list[str] = EXPORT_FIELDNAMES) -> str:
+    """Writes rows (dicts keyed by `fieldnames`) to CSV text: a UTF-8 BOM
+    (so Excel opens it as UTF-8 rather than guessing) and CRLF line
     endings. csv.writer already uses \\r\\n by default -- do not also
     replace \\n, or every line ending doubles to \\r\\r\\n."""
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=EXPORT_FIELDNAMES, extrasaction="ignore")
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     for row in rows:
         writer.writerow({k: ("" if v is None else v) for k, v in row.items()})

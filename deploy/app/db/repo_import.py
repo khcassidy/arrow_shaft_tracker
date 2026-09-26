@@ -40,12 +40,29 @@ import json
 import secrets
 import sqlite3
 
-from app.db import repo_batches, repo_lookups, repo_shafts, repo_spine_bands
+from app.db import repo_arrows, repo_batches, repo_lookups, repo_params, repo_sets, repo_shafts, repo_spine_bands
 from core.units import UnitError, parse_length_in, parse_spine_lb, parse_weight
 from core.validate import check_spine_reading, check_weight_reading
 
 _QUALITY_VALUES = {"USABLE", "BAD", "JUNK"}
+
+# diameter/wood/shop are scanned off every staged shaft row (a batch- or
+# shaft-level field); the four arrow-build catalogues are scanned off
+# staged_sets instead (a Set's defaults, or one member's own arrow build)
+# -- see stage_rows. Both groups end up in the same to_create/lookups
+# maps below, since "create the label a file names but this database
+# lacks" is the identical rule either way.
 _LOOKUP_KINDS = ("diameter", "wood", "shop")
+_CATALOGUE_KINDS = ("nock", "fletching", "point", "finish")
+_TABLE_FOR = {
+    "diameter": "diameter_option",
+    "wood": "wood_option",
+    "shop": "shop",
+    "nock": "nock_option",
+    "fletching": "fletching_option",
+    "point": "point_option",
+    "finish": "finish_product",
+}
 
 # Batch-level fields every row of that batch carries a copy of. The first
 # row that names one wins, matching how the rest of the batch meta is read.
@@ -71,11 +88,7 @@ def _lookup_maps(conn: sqlite3.Connection) -> dict:
             for r in conn.execute(f"SELECT id, label FROM {table}").fetchall()
         }
 
-    return {
-        "diameter": by_label("diameter_option"),
-        "wood": by_label("wood_option"),
-        "shop": by_label("shop"),
-    }
+    return {kind: by_label(table) for kind, table in _TABLE_FOR.items()}
 
 
 def _band_map(conn: sqlite3.Connection) -> dict:
@@ -92,6 +105,8 @@ def stage_rows(
     fmt: str,
     lookup_defs: dict | None = None,
     band_defs: dict | None = None,
+    param_set_defs: list[dict] | None = None,
+    staged_sets: list[dict] | None = None,
 ) -> dict:
     """rows must already be in the canonical staged-row shape (see the module
     docstring) -- callers use csv_io.to_staged_rows() or
@@ -99,10 +114,19 @@ def stage_rows(
 
     lookup_defs and band_defs give the extra attributes for a label this
     database does not have yet, keyed by lowercased label (see
-    json_io.lookup_definitions and json_io.band_definitions). A JSON backup
-    carries them, so a shop it creates keeps its url and notes, and a
-    diameter keeps its sixty_fourths. A CSV carries bare labels only, so it
-    passes neither, and anything created from one starts with just a label.
+    json_io.lookup_definitions, json_io.catalogue_definitions and
+    json_io.band_definitions -- lookup_defs carries both the three plain
+    lookups and the four arrow-build catalogues, merged, since both are
+    resolved through the exact same to_create/lookups maps below). A JSON
+    backup carries them, so a shop it creates keeps its url and notes, and
+    a diameter keeps its sixty_fourths. A CSV carries bare labels only, so
+    it passes neither, and anything created from one starts with just a
+    label.
+
+    param_set_defs and staged_sets are JSON-only (json_io.
+    param_set_definitions / json_io.to_staged_sets) -- a CSV row has no way
+    to express a parameter set or a Set spanning batches, so a CSV import
+    always passes neither and this stays a no-op for it.
     """
     lookups = _lookup_maps(conn)
     bands = _band_map(conn)
@@ -116,7 +140,7 @@ def stage_rows(
     errors: list[str] = []
     all_batch_nos: set[int] = set()
     groups: dict[int, dict] = {}  # batch_no -> {"meta": {...}, "shafts": {seq: {...}}}
-    to_create: dict[str, dict] = {kind: {} for kind in _LOOKUP_KINDS}
+    to_create: dict[str, dict] = {kind: {} for kind in _TABLE_FOR}
     bands_to_create: dict[str, dict] = {}
 
     for i, row in enumerate(rows):
@@ -228,6 +252,59 @@ def stage_rows(
             errors.append(f"batch {batch_no}: length -- {exc}")
             group["meta"].pop("batchLength")
 
+    # A Set's own defaults, and every member's own arrow build, may each
+    # name a nock/fletching/point/finish label this database lacks --
+    # scanned here (not in the per-shaft-row loop above) since these
+    # labels never appear on a shaft row itself.
+    for set_data in staged_sets or []:
+        label_sources = [set_data.get("defaults") or {}]
+        label_sources += [m["arrow"] for m in set_data.get("members", []) if m.get("arrow")]
+        for source in label_sources:
+            for kind in _CATALOGUE_KINDS:
+                label = (source.get(kind) or "").strip()
+                if not label:
+                    continue
+                key = _key(label)
+                if key not in lookups[kind] and key not in to_create[kind]:
+                    to_create[kind][key] = {"label": label, **defs.get(kind, {}).get(key, {})}
+
+    # A Set is only restorable whole: every member shaft must belong to a
+    # batch THIS import is newly creating, never one already skipped as
+    # pre-existing -- reconciling against a batch that already has its own
+    # independent life (possibly already consumed into a different set) is
+    # exactly the harder problem the module docstring's "never merge"
+    # scope note already rules out for a plain batch.
+    sets_stageable: list[dict] = []
+    sets_skipped: list[dict] = []
+    for set_data in staged_sets or []:
+        missing = [
+            f"{m['batchNo']}-{m['seq']}"
+            for m in set_data.get("members", [])
+            if m["seq"] not in groups.get(m["batchNo"], {}).get("shafts", {})
+        ]
+        if missing:
+            sets_skipped.append(
+                {
+                    "name": set_data.get("name"),
+                    "reason": f"shaft(s) not part of this import: {', '.join(missing)}",
+                }
+            )
+        else:
+            sets_stageable.append(set_data)
+
+    existing_param_set_names = {
+        _key(r["name"]) for r in conn.execute("SELECT name FROM param_set").fetchall()
+    }
+    param_sets_to_create: list[dict] = []
+    seen_param_set_names: set[str] = set()
+    for param_set in param_set_defs or []:
+        name = (param_set.get("name") or "").strip()
+        key = _key(name)
+        if not name or key in existing_param_set_names or key in seen_param_set_names:
+            continue
+        seen_param_set_names.add(key)
+        param_sets_to_create.append(param_set)
+
     row_count = sum(len(g["shafts"]) for g in groups.values())
     report = {
         "rowCount": row_count,
@@ -235,9 +312,12 @@ def stage_rows(
         "batchesSkippedExisting": sorted(all_batch_nos & existing_batch_nos),
         "lookupsToCreate": {
             kind: sorted(entry["label"] for entry in to_create[kind].values())
-            for kind in _LOOKUP_KINDS
+            for kind in to_create
         },
         "spineBandsToCreate": sorted(entry["label"] for entry in bands_to_create.values()),
+        "paramSetsToCreate": [p["name"] for p in param_sets_to_create],
+        "setsToCreate": [s["name"] for s in sets_stageable],
+        "setsSkipped": sets_skipped,
         "errors": errors,
     }
 
@@ -245,6 +325,8 @@ def stage_rows(
         "groups": groups,
         "lookupsToCreate": to_create,
         "spineBandsToCreate": bands_to_create,
+        "paramSetsToCreate": param_sets_to_create,
+        "stagedSets": sets_stageable,
     }
     token = secrets.token_urlsafe(16)
     conn.execute(
@@ -263,8 +345,8 @@ def _create_missing_lookups(conn: sqlite3.Connection, to_create: dict) -> tuple[
     label is re-checked against the live table first, so one that a person
     added between preview and commit is reused, not failed on its UNIQUE."""
     lookups = _lookup_maps(conn)
-    created: dict[str, list[str]] = {kind: [] for kind in _LOOKUP_KINDS}
-    for kind in _LOOKUP_KINDS:
+    created: dict[str, list[str]] = {kind: [] for kind in _TABLE_FOR}
+    for kind in _TABLE_FOR:
         for entry in (to_create.get(kind) or {}).values():
             label = (entry.get("label") or "").strip()
             key = _key(label)
@@ -276,13 +358,74 @@ def _create_missing_lookups(conn: sqlite3.Connection, to_create: dict) -> tuple[
                 )
             elif kind == "wood":
                 option_id = repo_lookups.create_wood_option(conn, label)
-            else:
+            elif kind == "shop":
                 option_id = repo_lookups.create_shop(
                     conn, label, entry.get("url"), entry.get("notes")
+                )
+            elif kind in repo_lookups.WEIGHTED_KINDS:
+                option_id = repo_lookups.create_weighted_option(
+                    conn, kind, label, entry.get("weightText"), entry.get("weightUnit"),
+                    entry.get("notes"),
+                )
+            else:
+                option_id = repo_lookups.create_finish_product(
+                    conn, label, entry.get("brand"), entry.get("url"), entry.get("notes")
                 )
             lookups[kind][key] = option_id
             created[kind].append(label)
     return lookups, created
+
+
+def _create_missing_param_sets(conn: sqlite3.Connection, param_sets_to_create: list[dict]) -> list[str]:
+    """Unlike a lookup label, a parameter set is never referenced by
+    anything else in the file -- every one the file names that this
+    database lacks by name gets created, full stop. Re-checks the live
+    table first, same reason _create_missing_lookups does."""
+    existing = {_key(r["name"]) for r in conn.execute("SELECT name FROM param_set").fetchall()}
+    created: list[str] = []
+    for param_set in param_sets_to_create or []:
+        name = (param_set.get("name") or "").strip()
+        key = _key(name)
+        if not name or key in existing:
+            continue
+        repo_params.create_param_set(
+            conn,
+            name=name,
+            spine_tol_mlb=param_set["spineTolMlb"],
+            weight_tol_cg=param_set["weightTolCg"],
+            objective=param_set.get("objective", "MAX_DOZENS"),
+            dozen_size=param_set.get("dozenSize", 12),
+            spec_min_mlb=param_set["specMinMlb"],
+            spec_max_mlb=param_set["specMaxMlb"],
+            ab_tol_cp=param_set["abTolCp"],
+            min_group_size=param_set.get("minGroupSize", 3),
+            length_tol_c_in=param_set.get("lengthTolCIn"),
+        )
+        existing.add(key)
+        created.append(name)
+    return created
+
+
+def _resolve_default_fields(lookups: dict, defaults: dict) -> dict:
+    """Shared by a restored Set's own defaults and each of its arrows'
+    build fields below -- both name the same five catalogue choices plus
+    cutLength, resolved the same way (a present label wins; an absent one
+    is left out of the returned dict entirely, so repo_arrows's own
+    exclude-unset PATCH semantics leave that field at its own default)."""
+    fields = {}
+    if defaults.get("nock"):
+        fields["nockOptionId"] = lookups["nock"].get(_key(defaults["nock"]), 0)
+    if defaults.get("fletching"):
+        fields["fletchingOptionId"] = lookups["fletching"].get(_key(defaults["fletching"]), 0)
+    if defaults.get("fletchCount"):
+        fields["fletchCount"] = defaults["fletchCount"]
+    if defaults.get("point"):
+        fields["pointOptionId"] = lookups["point"].get(_key(defaults["point"]), 0)
+    if defaults.get("finish"):
+        fields["finishProductId"] = lookups["finish"].get(_key(defaults["finish"]), 0)
+    if defaults.get("cutLength"):
+        fields["cutLength"] = defaults["cutLength"]
+    return fields
 
 
 def _create_missing_bands(conn: sqlite3.Connection, bands_to_create: dict) -> tuple[dict, list]:
@@ -322,6 +465,11 @@ def commit_import(conn: sqlite3.Connection, token: str) -> dict:
 
     batches_created = 0
     shafts_written = 0
+    # Populated only for shafts this same commit just created -- a Set
+    # below is only ever built from these, per stage_rows's own
+    # sets_stageable filter, so every (batch_no, seq) a staged Set names
+    # is guaranteed present here by the time that loop runs.
+    shaft_id_by_label: dict[tuple[int, int], int] = {}
 
     for batch_no_str, group in groups.items():
         batch_no = int(batch_no_str)
@@ -366,6 +514,51 @@ def commit_import(conn: sqlite3.Connection, token: str) -> dict:
             if fields:
                 repo_shafts.patch_shaft_entry(conn, batch_id, seq, fields)
             shafts_written += 1
+            shaft_id_by_label[(batch_no, seq)] = repo_shafts.get_shaft(conn, batch_id, seq)["id"]
+
+    param_sets_created = _create_missing_param_sets(conn, payload.get("paramSetsToCreate", []))
+
+    sets_created = 0
+    arrows_written = 0
+    for set_data in payload.get("stagedSets", []):
+        members = set_data.get("members", [])
+        shaft_ids = [shaft_id_by_label[(m["batchNo"], m["seq"])] for m in members]
+        new_set = repo_sets.create_set(
+            conn,
+            name=set_data["name"],
+            diameter_id=lookups["diameter"].get(_key(set_data.get("diameter")), 0),
+            wood_id=lookups["wood"].get(_key(set_data.get("wood")), 0),
+            shaft_ids=shaft_ids,
+            target_size=set_data.get("targetSize", 12),
+            notes=set_data.get("notes"),
+        )
+        set_id = new_set["id"]
+        sets_created += 1
+
+        default_fields = _resolve_default_fields(lookups, set_data.get("defaults") or {})
+        if default_fields:
+            repo_arrows.update_defaults(conn, set_id, default_fields)
+
+        members_with_arrows = [m for m in members if m.get("arrow")]
+        if members_with_arrows:
+            arrow_id_by_shaft = {
+                a["shaft_id"]: a["id"] for a in repo_arrows.start_build(conn, set_id)
+            }
+            for member in members_with_arrows:
+                shaft_id = shaft_id_by_label[(member["batchNo"], member["seq"])]
+                arrow_id = arrow_id_by_shaft.get(shaft_id)
+                if arrow_id is None:
+                    continue
+                arrow_data = member["arrow"]
+                arrow_fields = _resolve_default_fields(lookups, arrow_data)
+                for key in (
+                    "afterFinishWeight", "afterFletchingWeight", "finishedWeight", "notes",
+                ):
+                    if arrow_data.get(key) is not None:
+                        arrow_fields[key] = arrow_data[key]
+                if arrow_fields:
+                    repo_arrows.update_arrow(conn, arrow_id, arrow_fields)
+                arrows_written += 1
 
     conn.execute(
         "UPDATE import_run SET status = 'committed', created_count = ?, "
@@ -378,4 +571,7 @@ def commit_import(conn: sqlite3.Connection, token: str) -> dict:
         "shaftsWritten": shafts_written,
         "lookupsCreated": lookups_created,
         "spineBandsCreated": bands_created,
+        "paramSetsCreated": param_sets_created,
+        "setsCreated": sets_created,
+        "arrowsWritten": arrows_written,
     }

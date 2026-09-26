@@ -8,8 +8,10 @@
 // of alphabetizing "9.00" ahead of "10.00".
 
 import {
+  computeGpi,
   deriveWeightDisplay,
   formatFlag,
+  formatGpi,
   formatLengthIn,
   formatSpineCp,
   formatSpineMlb,
@@ -82,6 +84,13 @@ const COLUMNS = [
     header: "Length (in)",
     get: (s) => (s.effectiveLengthCIn != null ? formatLengthIn(s.effectiveLengthCIn) : ""),
     sortValue: (s) => s.effectiveLengthCIn,
+    num: true,
+  },
+  {
+    key: "gpi",
+    header: "GPI",
+    get: (s) => formatGpi(s.weightCg, s.effectiveLengthCIn),
+    sortValue: (s) => computeGpi(s.weightCg, s.effectiveLengthCIn),
     num: true,
   },
   {
