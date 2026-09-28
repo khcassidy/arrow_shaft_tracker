@@ -78,3 +78,23 @@ change:
 ```powershell
 python scripts\backup.py
 ```
+<img width="1628" height="1028" alt="image" src="https://github.com/user-attachments/assets/2e62b3b5-2e4b-4590-bf10-8327baab9a1c" />
+
+<img width="1620" height="1180" alt="image" src="https://github.com/user-attachments/assets/e01ffc28-840a-40e9-bc9e-b0f65b7a0ef2" />
+
+<img width="1630" height="1435" alt="image" src="https://github.com/user-attachments/assets/f88a40ce-bd16-4b51-81d0-bfe8380ffd3c" />
+
+<img width="1631" height="1444" alt="image" src="https://github.com/user-attachments/assets/b9cd7b1a-0052-46fa-b5be-bc3a05d3d32a" />
+
+<img width="1631" height="224" alt="image" src="https://github.com/user-attachments/assets/058ef4e4-67ac-4b3e-b70a-8f9612cc2686" />
+
+<img width="1617" height="1359" alt="image" src="https://github.com/user-attachments/assets/5e3913f1-630b-40dd-adf4-6166e5ce029b" />
+
+<img width="1626" height="1388" alt="image" src="https://github.com/user-attachments/assets/f98012aa-1529-4144-8aba-5fd89d4a1491" />
+
+<img width="1619" height="1432" alt="image" src="https://github.com/user-attachments/assets/d7a6217e-5933-4f01-ad1a-45f3aa9c7c80" />
+
+
+
+
+
